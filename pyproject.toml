@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "poppet-mcp"
+version = "0.1.0"
+description = "Model Context Protocol server for Cascadeur — drive AutoPosing, AutoPhysics, and keyframe authoring from Claude."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Brandon Figarella" }]
+keywords = ["mcp", "cascadeur", "animation", "claude", "anthropic", "autoposing", "autophysics"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+dependencies = [
+    "mcp>=1.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+poppet-mcp = "poppet_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/brandonfigarella/poppet"
+Issues = "https://github.com/brandonfigarella/poppet/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/poppet_mcp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
