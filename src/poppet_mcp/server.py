@@ -27,8 +27,8 @@ def _connection() -> CascadeurConnection:
     global _conn
     if _conn is None:
         _conn = CascadeurConnection(
-            host=os.environ.get("POPPET_HOST", "127.0.0.1"),
-            port=int(os.environ.get("POPPET_PORT", "53145")),
+            timeout=float(os.environ.get("POPPET_TIMEOUT", "60")),
+            poll_interval=float(os.environ.get("POPPET_POLL_INTERVAL", "0.1")),
         )
     return _conn
 
