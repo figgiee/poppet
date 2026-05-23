@@ -439,13 +439,25 @@ def _d_frame_get(params, scene):
 
 
 def _d_frame_set(params, scene):
+    """Attempt to move the playhead. KNOWN BUG: in Cascadeur 2025.3.3 neither
+    scene.set_current_frame() nor session.set_current_frame() actually persist
+    the playhead — both accept the value but get_current_frame() still returns
+    the prior frame. The real playhead setter is likely on csc.view.Scene's
+    animation_boundary or requires a UI message dispatch we haven't found.
+
+    Returns the post-call get to surface whether the change stuck.
+    Use call_action with a Timeline.* action ID as a workaround until resolved.
+    """
     frame = int(params["frame"])
-
-    def mod(model, update, sc, session):
-        session.set_current_frame(frame)
-
-    scene.modify_with_session("Poppet: set current frame", mod)
-    return {"current_frame": frame}
+    # Try direct (no session); session-based had the same issue.
+    scene.set_current_frame(frame)
+    actual = scene.get_current_frame()
+    return {
+        "requested": frame,
+        "current_frame": actual,
+        "persisted": actual == frame,
+        "note": "see _dispatchers.py _d_frame_set docstring for the known issue" if actual != frame else None,
+    }
 
 
 # ============================================================================
