@@ -55,8 +55,36 @@ def get_selection() -> dict:
 
 @mcp.tool()
 def set_selection(object_names: list[str]) -> dict:
-    """Replace the current selection with the given object names."""
+    """Replace the current selection with the given object names.
+
+    Reports any names that couldn't be matched in `missing`. Wraps the change
+    in a Cascadeur session for undo support.
+    """
     return _call("selection_set", object_names=object_names)
+
+
+@mcp.tool()
+def clear_selection() -> dict:
+    """Clear the current object selection."""
+    return _call("selection_clear")
+
+
+@mcp.tool()
+def list_objects(name_contains: str | None = None) -> dict:
+    """List all scene objects (id, name, type). Optional `name_contains` filter."""
+    return _call("objects_list", name_contains=name_contains)
+
+
+@mcp.tool()
+def get_current_frame() -> dict:
+    """Return the current playhead frame index."""
+    return _call("frame_get")
+
+
+@mcp.tool()
+def set_current_frame(frame: int) -> dict:
+    """Move the playhead to the given frame index."""
+    return _call("frame_set", frame=frame)
 
 
 @mcp.tool()
