@@ -46,7 +46,7 @@ def run(scene):
         log("Process Pending: no requests")
         return
 
-    log("Process Pending: draining {} request(s)".format(len(pending)))
+    log(f"Process Pending: draining {len(pending)} request(s)")
     ok = 0
     err = 0
 
@@ -54,12 +54,12 @@ def run(scene):
         req_path = os.path.join(req_dir, fname)
         uuid = fname[:-5]  # strip .json
         try:
-            with open(req_path, "r", encoding="utf-8") as f:
+            with open(req_path, encoding="utf-8") as f:
                 message = json.load(f)
         except Exception as e:
             response = {
                 "status": "error",
-                "message": "could not read request {}: {}".format(fname, e),
+                "message": f"could not read request {fname}: {e}",
             }
             err += 1
         else:
@@ -72,7 +72,7 @@ def run(scene):
             except Exception as e:
                 response = {
                     "status": "error",
-                    "message": "dispatch crashed: {}: {}".format(type(e).__name__, e),
+                    "message": f"dispatch crashed: {type(e).__name__}: {e}",
                     "traceback": traceback.format_exc(),
                 }
                 err += 1
@@ -85,11 +85,11 @@ def run(scene):
                 json.dump(response, f, ensure_ascii=False)
             os.replace(tmp_path, resp_path)
         except Exception as e:
-            log("failed writing response {}: {}".format(uuid, e))
+            log(f"failed writing response {uuid}: {e}")
 
         try:
             os.remove(req_path)
         except Exception as e:
-            log("failed removing request {}: {}".format(fname, e))
+            log(f"failed removing request {fname}: {e}")
 
-    log("Process Pending: done — ok={} err={}".format(ok, err))
+    log(f"Process Pending: done — ok={ok} err={err}")

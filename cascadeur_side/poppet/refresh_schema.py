@@ -17,4 +17,4 @@ def command_name():
 
 def run(scene):
     path = _introspect.dump_schema()
-    print("[poppet] schema written to: {}".format(path))
+    print(f"[poppet] schema written to: {path}")

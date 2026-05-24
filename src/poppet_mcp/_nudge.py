@@ -34,7 +34,6 @@ def try_nudge_cascadeur() -> bool:
 
 def _find_cascadeur_window() -> int | None:
     user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
 
     found: list[int] = []
 
@@ -76,6 +75,7 @@ def _send_menu_sequence(hwnd: int) -> bool:
 
     # Tiny pause so the foreground change settles before keys go to it.
     import time
+
     time.sleep(0.1)
 
     # Verify Cascadeur is now foreground; abort if not (we'd type into the wrong app).
@@ -85,7 +85,6 @@ def _send_menu_sequence(hwnd: int) -> bool:
     KEYEVENTF_KEYUP = 0x0002
     VK_C = ord("C")
     VK_P = ord("P")
-    VK_DOWN = 0x28
     VK_RETURN = 0x0D
     VK_MENU_KEY = 0x12  # Alt
 

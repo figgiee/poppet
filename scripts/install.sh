@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the Poppet Cascadeur-side command script (macOS / Linux).
+# Install the Poppet Cascadeur-side command + event scripts (macOS / Linux).
 
 set -euo pipefail
 
@@ -49,12 +49,20 @@ fi
 
 echo "Detected commands folder: $COMMANDS_DIR"
 
+# events/ is a sibling of commands/ inside resources/scripts/python.
+EVENTS_DIR="$(dirname "$COMMANDS_DIR")/events"
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC_DIR="$REPO_ROOT/cascadeur_side/poppet"
+EVENTS_SRC_DIR="$REPO_ROOT/cascadeur_side/poppet_events"
 DST_DIR="$COMMANDS_DIR/poppet"
 
 if [[ ! -d "$SRC_DIR" ]]; then
     echo "Source not found: $SRC_DIR" >&2
+    exit 1
+fi
+if [[ ! -d "$EVENTS_SRC_DIR" ]]; then
+    echo "Events source not found: $EVENTS_SRC_DIR" >&2
     exit 1
 fi
 
@@ -66,15 +74,28 @@ fi
 echo "Copying $SRC_DIR -> $DST_DIR"
 cp -R "$SRC_DIR" "$DST_DIR"
 
+# Merge event handlers into bundled events/ tree (subpackage-name addressed).
+for evt in scene_activated scene_opened; do
+    evt_src="$EVENTS_SRC_DIR/$evt/poppet_drain.py"
+    if [[ ! -f "$evt_src" ]]; then
+        echo "Skipping $evt (no handler)"
+        continue
+    fi
+    evt_dst="$EVENTS_DIR/$evt/poppet_drain.py"
+    mkdir -p "$(dirname "$evt_dst")"
+    cp "$evt_src" "$evt_dst"
+    echo "Installed event handler: $evt_dst"
+done
+
 cat <<'EOF'
 
-[OK] Cascadeur-side install complete.
+[OK] Cascadeur-side install complete (commands + auto-drain events).
 
 Next steps:
   1. Restart Cascadeur.
-  2. Verify QTimer compat: Commands -> Poppet -> POC Tick Loop
-     (viewport should stay responsive; re-run to stop)
-  3. Start the real server: Commands -> Poppet -> Start Server
+  2. Verify Commands menu: Commands -> Poppet -> Process Pending (manual drain)
+  3. Auto-drain is now wired via scene_activated / scene_opened events —
+     queued requests should run any time the Cascadeur window regains focus.
   4. (Once) Refresh the introspection schema: Commands -> Poppet -> Refresh Schema
   5. Wire up your MCP client:
 

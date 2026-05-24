@@ -30,8 +30,10 @@ $cfgDir = Join-Path $env:LOCALAPPDATA "Nekki Limited\Cascadeur"
 $settingsPath = Join-Path $cfgDir "settings.json"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $srcDir = Join-Path $repoRoot "cascadeur_side\poppet"
+$eventsSrcDir = Join-Path $repoRoot "cascadeur_side\poppet_events"
 
 if (-not (Test-Path $srcDir)) { throw "Source not found: $srcDir" }
+if (-not (Test-Path $eventsSrcDir)) { throw "Events source not found: $eventsSrcDir" }
 
 function Find-BundledCommandsDir {
     $candidates = @(
@@ -59,9 +61,32 @@ if ($Elevate) {
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
     if (-not $isAdmin) { throw "-Elevate requires running PowerShell as Administrator." }
 
-    $dstDir = Join-Path (Find-BundledCommandsDir) "poppet"
-    Write-Host "Admin mode - target: $dstDir"
+    $commandsDir = Find-BundledCommandsDir
+    $eventsDir = Join-Path (Split-Path -Parent $commandsDir) "events"
+
+    $dstDir = Join-Path $commandsDir "poppet"
+    Write-Host "Admin mode - commands target: $dstDir"
     Copy-PoppetTree $srcDir $dstDir
+
+    # Events are addressed by subpackage name (scene_activated, etc.), so
+    # we merge our event handlers INTO the bundled events/ tree, side-by-side
+    # with example.py — no settings.json change needed because 'events' is
+    # already in Python.Events by default.
+    foreach ($evtName in @("scene_activated", "scene_opened")) {
+        $evtSrc = Join-Path $eventsSrcDir "$evtName\poppet_drain.py"
+        if (-not (Test-Path $evtSrc)) {
+            Write-Host "Skipping $evtName (no handler in source tree)"
+            continue
+        }
+        $evtDst = Join-Path $eventsDir "$evtName\poppet_drain.py"
+        $evtDstDir = Split-Path -Parent $evtDst
+        if (-not (Test-Path $evtDstDir)) {
+            New-Item -ItemType Directory -Path $evtDstDir -Force | Out-Null
+        }
+        Copy-Item -Path $evtSrc -Destination $evtDst -Force
+        Write-Host "Copied event handler: $evtDst"
+    }
+
     Write-Host ""
     Write-Host "[OK] Admin install complete. No settings.json change required."
 }
@@ -85,6 +110,9 @@ else {
 
     $dstDir = Join-Path $userScripts "poppet"
     Copy-PoppetTree $srcDir $dstDir
+
+    $dstEventsDir = Join-Path $userScripts "poppet_events"
+    Copy-PoppetTree $eventsSrcDir $dstEventsDir
 
     # Update settings.json additively.
     $backupPath = "$settingsPath.bak"
@@ -121,6 +149,29 @@ else {
     }
     $settings.Python.Commands = @($cmdList)
 
+    # Ensure Python.Events includes 'poppet_events'. Cascadeur's events_rule.py
+    # walks each entry as a Python package; subpackages must be named after the
+    # event (scene_activated, etc.) and contain .py modules with a run(scene)
+    # function — see C:/Program Files/Cascadeur/resources/scripts/python/events_rule.py.
+    $evList = New-Object System.Collections.ArrayList
+    if ($settings.Python.PSObject.Properties['Events']) {
+        if ($settings.Python.Events) {
+            foreach ($e in $settings.Python.Events) { [void]$evList.Add($e) }
+        }
+    }
+    if ($evList -notcontains "poppet_events") {
+        [void]$evList.Add("poppet_events")
+        Write-Host "Appended to Python.Events: poppet_events"
+    }
+    # Add the Events key if it didn't exist (older user settings.json
+    # don't include it because it defaults to ['events'] in the bundled
+    # resources/settings.json — but the user file overrides).
+    if (-not $settings.Python.PSObject.Properties['Events']) {
+        Add-Member -InputObject $settings.Python -MemberType NoteProperty -Name "Events" -Value @($evList)
+    } else {
+        $settings.Python.Events = @($evList)
+    }
+
     $fi = Get-Item $settingsPath -Force
     if ($fi.IsReadOnly) { $fi.IsReadOnly = $false }
     $json = $settings | ConvertTo-Json -Depth 10
@@ -129,8 +180,9 @@ else {
 
     Write-Host ""
     Write-Host "[OK] Additive install complete."
-    Write-Host "     Target: $dstDir"
-    Write-Host "     settings.json: ScriptsDir untouched, Python.Path + Python.Commands extended."
+    Write-Host "     Commands target: $dstDir"
+    Write-Host "     Events target  : $dstEventsDir"
+    Write-Host "     settings.json: ScriptsDir untouched, Python.Path + Python.Commands + Python.Events extended."
 }
 
 Write-Host ""

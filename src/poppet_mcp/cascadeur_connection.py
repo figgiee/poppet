@@ -59,6 +59,7 @@ class CascadeurConnection:
         # Best-effort nudge — the user can also click manually.
         try:
             from poppet_mcp import _nudge
+
             _nudge.try_nudge_cascadeur()
         except Exception:
             pass
@@ -67,7 +68,7 @@ class CascadeurConnection:
         while time.time() < deadline:
             if os.path.exists(resp_path):
                 try:
-                    with open(resp_path, "r", encoding="utf-8") as f:
+                    with open(resp_path, encoding="utf-8") as f:
                         response = json.load(f)
                 except Exception:
                     # Response is mid-write — retry next tick.
@@ -91,7 +92,7 @@ class CascadeurConnection:
         except Exception:
             pass
         raise TimeoutError(
-            "Cascadeur did not respond within {}s. Is Cascadeur running and did "
+            f"Cascadeur did not respond within {self.timeout}s. Is Cascadeur running and did "
             "'Commands -> Poppet -> Process Pending' get clicked? (Or is auto-nudge "
-            "failing to find Cascadeur's window?)".format(self.timeout)
+            "failing to find Cascadeur's window?)"
         )
