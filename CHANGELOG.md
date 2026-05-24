@@ -4,6 +4,45 @@ All notable changes to Poppet — Cascadeur MCP. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per
 [SemVer](https://semver.org/).
 
+## [0.4.0] — 2026-05-24
+
+### Added
+
+- **`set_controller_scale(controller_id, frame, sx, sy, sz, local)`** —
+  writes to Local Scale / Scale node at the given frame. Mirrors
+  set_controller_position; useful for stretchy IK / non-uniform scale targets.
+- **Proper `add_keyframe` / `remove_keyframe` dispatchers.** v0.1's MCP
+  tools routed through keyframe_set with placeholder transform dicts that
+  the dispatcher didn't understand. v0.4 adds dedicated `keyframe_add` /
+  `keyframe_remove` dispatchers using `session.layers_editor()
+  .set_fixed_interpolation_or_key_if_need(...)` and `.unset_section(...)`,
+  patterns from `commands/animation_scripts/{keyframe_reduction,reverse_animation}.py`.
+  The MCP tools (`add_keyframe`, `remove_keyframe`) now actually work.
+- **Release automation** — `.github/workflows/release.yml` builds + publishes
+  on tag push (Trusted Publishing or `PYPI_API_TOKEN`), attaches dist
+  artifacts to the GitHub release with the matching CHANGELOG section as
+  notes.
+- **`scripts/install_check.py`** — diagnostic that walks the Cascadeur-side
+  install + settings.json keys + MCP server importability + queue dirs.
+- **`Makefile`** — convenience targets for install/dev/test/lint/format/
+  build/smoke/clean/release-test/release-prod.
+- README badges (CI, license, python, Cascadeur version) +
+  **`docs/mcp_client_configs.md`** with copy-paste config for Claude Code,
+  Claude Desktop, Cursor/Windsurf, env vars, local dev install, smoke test.
+
+### Fixed
+
+- MCP-level `add_keyframe(layer_id, frame)` and `remove_keyframe(layer_id, frame)`
+  were silently no-ops in v0.1-0.3 because the dispatcher path didn't honor
+  the `transform={"add": True}` / `{"remove": True}` shape. Now they route
+  through real `keyframe_add` / `keyframe_remove` dispatchers.
+
+### Changed
+
+- MCP tool count: **39 → 40** (set_controller_scale added; add/remove_keyframe
+  already counted).
+- Dispatcher count: **38 → 41**.
+
 ## [0.3.0] — 2026-05-24
 
 ### Added

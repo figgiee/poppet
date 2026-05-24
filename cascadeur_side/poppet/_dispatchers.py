@@ -1422,6 +1422,145 @@ def _d_active_layer_get(params, scene):
     return out
 
 
+def _d_keyframe_add(params, scene):
+    """Add a keyframe on `layer_id` at `frame`.
+
+    Uses the same `set_fixed_interpolation_or_key_if_need` path bake_range
+    uses, but for a single frame.
+    """
+    layer_id_str = params.get("layer_id")
+    frame = int(params.get("frame", 0))
+    if not layer_id_str:
+        raise ValueError("'layer_id' is required")
+    lid, _ = _resolve_layer(scene, layer_id_str)
+    if lid is None:
+        raise ValueError(f"layer_id not found: {layer_id_str!r}")
+
+    err = {"value": None}
+
+    def mod(model, update, sc, session):
+        try:
+            le = session.layers_editor()
+            le.set_fixed_interpolation_or_key_if_need(lid, frame, True)
+        except Exception as e:
+            err["value"] = f"{type(e).__name__}: {e}"
+
+    scene.modify_with_session("Poppet: add keyframe", mod)
+    out = {"layer_id": layer_id_str, "frame": frame, "added": err["value"] is None}
+    if err["value"]:
+        out["error"] = err["value"]
+    return out
+
+
+def _d_keyframe_remove(params, scene):
+    """Remove the keyframe at `frame` on `layer_id`.
+
+    Pattern from commands/animation_scripts/keyframe_reduction.py:
+        le.unset_section(frame, layer_id)
+    """
+    layer_id_str = params.get("layer_id")
+    frame = int(params.get("frame", 0))
+    if not layer_id_str:
+        raise ValueError("'layer_id' is required")
+    lid, _ = _resolve_layer(scene, layer_id_str)
+    if lid is None:
+        raise ValueError(f"layer_id not found: {layer_id_str!r}")
+
+    err = {"value": None}
+
+    def mod(model, update, sc, session):
+        try:
+            le = session.layers_editor()
+            le.unset_section(frame, lid)
+        except Exception as e:
+            err["value"] = f"{type(e).__name__}: {e}"
+
+    scene.modify_with_session("Poppet: remove keyframe", mod)
+    out = {"layer_id": layer_id_str, "frame": frame, "removed": err["value"] is None}
+    if err["value"]:
+        out["error"] = err["value"]
+    return out
+
+
+def _d_set_controller_scale(params, scene):
+    """Set a controller's Local Scale (or Scale) at a frame.
+
+    Mirrors _d_keyframe_set but writes to the Scale node instead of
+    Position/Rotation. Useful for stretchy IK or non-uniform scale targets.
+
+    Params:
+      controller_id: str
+      frame: int
+      scale: [sx, sy, sz]
+      local: bool (default True)
+    """
+    controller = params.get("controller_id")
+    if not controller:
+        raise ValueError("controller_id is required")
+    if "scale" not in params:
+        raise ValueError("'scale' is required (list of 3 floats)")
+    scale = params["scale"]
+    frame = int(params["frame"])
+    use_local = params.get("local", True)
+
+    obj_id = _find_obj_by_name(scene, controller)
+    if obj_id is None:
+        mv = scene.model_viewer()
+        for oid in mv.get_objects():
+            if _id_str(oid) == controller:
+                obj_id = oid
+                break
+    if obj_id is None:
+        raise ValueError(f"controller not found by name or id: {controller!r}")
+
+    scale_node_name = "Local Scale" if use_local else "Scale"
+    applied = {"frame": frame}
+    actuals_acc = []
+
+    def mod(model, update, scene_updater):
+        actuals = set()
+        try:
+            node = update.get_object_by_id(obj_id).root_group()
+        except Exception as e:
+            applied["error"] = f"get_object_by_id: {e}"
+            return
+        try:
+            attr = node.node_deep(scale_node_name)
+            if attr is None:
+                applied["error"] = f"node {scale_node_name!r} not on {controller!r}"
+                return
+            current = attr.value(frame)
+            if current is not None:
+                delta = [
+                    float(scale[0]) - float(current[0]),
+                    float(scale[1]) - float(current[1]),
+                    float(scale[2]) - float(current[2]),
+                ]
+                new_val = current + delta
+            else:
+                new_val = [float(scale[0]), float(scale[1]), float(scale[2])]
+            attr.set_value(new_val, frame)
+            actuals.add(attr.data_id())
+            applied["scale_new"] = _vec_to_list(new_val)
+            applied["scale_set"] = True
+        except Exception as e:
+            applied["error"] = f"{type(e).__name__}: {e}"
+        actuals_acc.extend(actuals)
+        if actuals:
+            try:
+                scene_updater.run_update(actuals, frame)
+            except Exception as e:
+                applied["run_update_error"] = f"{type(e).__name__}: {e}"
+
+    scene.modify_update("Poppet: set scale", mod)
+    return {
+        "controller": controller,
+        "obj_id": _id_str(obj_id),
+        "applied": applied,
+        "attrs_updated": len(actuals_acc),
+    }
+
+
 def _d_active_layer_set(params, scene):
     """Switch the editing-active layer."""
     layer_id_str = params.get("layer_id")
@@ -1629,4 +1768,8 @@ _HANDLERS = {
     "selection_filter": _d_selection_filter,
     "active_layer_get": _d_active_layer_get,
     "active_layer_set": _d_active_layer_set,
+    # v0.4 — proper keyframe add/remove + scale
+    "keyframe_add": _d_keyframe_add,
+    "keyframe_remove": _d_keyframe_remove,
+    "controller_scale_set": _d_set_controller_scale,
 }

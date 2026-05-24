@@ -282,6 +282,10 @@ def test_frame_set_reports_unpersisted_when_get_disagrees(fake_scene):
         "selection_filter",
         "active_layer_get",
         "active_layer_set",
+        # v0.4
+        "keyframe_add",
+        "keyframe_remove",
+        "controller_scale_set",
     ],
 )
 def test_new_handler_registered(name):
@@ -289,10 +293,10 @@ def test_new_handler_registered(name):
     assert callable(_dispatchers._HANDLERS[name])
 
 
-def test_handler_count_at_least_38():
-    # v0.1 had 19, v0.2 adds 16 (11 main + 5 layer/undo), v0.3 adds 3 more.
-    assert len(_dispatchers._HANDLERS) >= 38, (
-        f"expected 38+ handlers, got {len(_dispatchers._HANDLERS)}: "
+def test_handler_count_at_least_41():
+    # v0.1 had 19, v0.2 +16, v0.3 +3, v0.4 +3 = 41.
+    assert len(_dispatchers._HANDLERS) >= 41, (
+        f"expected 41+ handlers, got {len(_dispatchers._HANDLERS)}: "
         f"{sorted(_dispatchers._HANDLERS)}"
     )
 
@@ -440,6 +444,51 @@ def test_active_layer_get_returns_structure(fake_scene):
     # Structure check: always has these keys even if no resolve method exists.
     assert "active_layer_id" in out
     assert "active_layer_name" in out
+
+
+# ---------------------------------------------------------------------------
+# keyframe_add / keyframe_remove / controller_scale_set (v0.4)
+# ---------------------------------------------------------------------------
+
+
+def test_keyframe_add_requires_layer_id(fake_scene):
+    with pytest.raises(ValueError, match="layer_id"):
+        _dispatchers._d_keyframe_add({"frame": 0}, fake_scene)
+
+
+def test_keyframe_add_404s_unknown_layer(fake_scene):
+    with pytest.raises(ValueError, match="not found"):
+        _dispatchers._d_keyframe_add({"layer_id": "ghost", "frame": 0}, fake_scene)
+
+
+def test_keyframe_remove_requires_layer_id(fake_scene):
+    with pytest.raises(ValueError, match="layer_id"):
+        _dispatchers._d_keyframe_remove({"frame": 0}, fake_scene)
+
+
+def test_keyframe_remove_404s_unknown_layer(fake_scene):
+    with pytest.raises(ValueError, match="not found"):
+        _dispatchers._d_keyframe_remove({"layer_id": "ghost", "frame": 0}, fake_scene)
+
+
+def test_controller_scale_set_requires_controller(fake_scene):
+    with pytest.raises(ValueError, match="controller_id"):
+        _dispatchers._d_set_controller_scale({"frame": 0, "scale": [1, 1, 1]}, fake_scene)
+
+
+def test_controller_scale_set_requires_scale_param(fake_scene):
+    with pytest.raises(ValueError, match="scale"):
+        _dispatchers._d_set_controller_scale(
+            {"controller_id": "pelvis_Box", "frame": 0}, fake_scene
+        )
+
+
+def test_controller_scale_set_404s_unknown_controller(fake_scene):
+    with pytest.raises(ValueError, match="not found"):
+        _dispatchers._d_set_controller_scale(
+            {"controller_id": "nope", "frame": 0, "scale": [1.0, 1.0, 1.0]},
+            fake_scene,
+        )
 
 
 # os import used above for path joins in fixtures
