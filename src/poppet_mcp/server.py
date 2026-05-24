@@ -357,6 +357,50 @@ def screenshot_viewport(path: str) -> dict:
 
 
 # ----------------------------------------------------------------------------
+# Layer create / delete + undo / redo + range bake (v0.3)
+# ----------------------------------------------------------------------------
+
+
+@mcp.tool()
+def add_layer(name: str, parent_id: str | None = None) -> dict:
+    """Create a new animation layer with `name`.
+
+    If `parent_id` is omitted, the layer is created under the scene root.
+    Returns the new layer's stringified id so subsequent calls can address it.
+    """
+    return _call("layer_add", name=name, parent_id=parent_id)
+
+
+@mcp.tool()
+def delete_layer(layer_id: str) -> dict:
+    """Delete a layer by id (use `list_layers()` to find an id first)."""
+    return _call("layer_delete", layer_id=layer_id)
+
+
+@mcp.tool()
+def undo() -> dict:
+    """Invoke Cascadeur's Scene.Undo action (reverse the last change)."""
+    return _call("undo")
+
+
+@mcp.tool()
+def redo() -> dict:
+    """Invoke Cascadeur's Scene.Redo action."""
+    return _call("redo")
+
+
+@mcp.tool()
+def bake_range(layer_id: str, frame_start: int, frame_end: int) -> dict:
+    """Bake per-frame keyframes across [frame_start, frame_end] on a layer.
+
+    Uses `layers_editor.set_fixed_interpolation_or_key_if_need(...)` from
+    Cascadeur's bundled reverse_animation.py pattern. Useful when you want
+    to commit a procedural-interpolation curve to discrete keys.
+    """
+    return _call("bake_range", layer_id=layer_id, frame_start=frame_start, frame_end=frame_end)
+
+
+# ----------------------------------------------------------------------------
 # Resources
 # ----------------------------------------------------------------------------
 

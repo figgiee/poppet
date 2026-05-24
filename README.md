@@ -10,7 +10,7 @@ End-to-end demo verified: Claude proposes 8 spec §4 operations → user clicks 
 
 ```
 Claude ──MCP stdio──▶ poppet-mcp (host process, uvx-installable)
-                       │ FastMCP — 31 tools + 1 resource
+                       │ FastMCP — 36 tools + 1 resource
                        ▼
               %LOCALAPPDATA%\poppet-mcp\requests\<uuid>.json
                        ▼
@@ -90,6 +90,9 @@ Or Claude Code: `claude mcp add poppet -- uvx poppet-mcp`.
 | `delete_object(name)` | [WIRED v0.2] | `session.model_editor().delete_objects([oid])` → action ID fallback chain |
 | `duplicate_object(name)` | [WIRED v0.2] | Selects + invokes `Scene.Edit.Duplicate`; returns the diff of new objects |
 | `screenshot_viewport(path)` | [WIRED v0.2] | `csc.tools.RenderToFile.editor.take_image(path)` → `Viewport.*` action fallback |
+| `add_layer(name, parent_id?)` / `delete_layer(layer_id)` | [WIRED v0.2] | `session.layers_editor().create_layer/delete_layer`, pattern from `common/layers_operation.py` |
+| `undo()` / `redo()` | [WIRED v0.2] | `Scene.Undo` / `Scene.Redo` action wrappers |
+| `bake_range(layer_id, frame_start, frame_end)` | [WIRED v0.2] | Bakes per-frame keys via `set_fixed_interpolation_or_key_if_need`, pattern from `commands/animation_scripts/reverse_animation.py` |
 
 Resources:
 - `csc://schema` — live `csc.*` API JSON (134KB) dumped by **Commands → Poppet → Refresh Schema**

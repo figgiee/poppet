@@ -272,6 +272,12 @@ def test_frame_set_reports_unpersisted_when_get_disagrees(fake_scene):
         "object_delete",
         "object_duplicate",
         "viewport_screenshot",
+        # v0.3-style adds (still in v0.2 release)
+        "layer_add",
+        "layer_delete",
+        "undo",
+        "redo",
+        "bake_range",
     ],
 )
 def test_new_handler_registered(name):
@@ -279,12 +285,72 @@ def test_new_handler_registered(name):
     assert callable(_dispatchers._HANDLERS[name])
 
 
-def test_handler_count_at_least_30():
-    # v0.1 had 19, v0.2 adds 11 — should be at least 30.
-    assert len(_dispatchers._HANDLERS) >= 30, (
-        f"expected 30+ handlers, got {len(_dispatchers._HANDLERS)}: "
+def test_handler_count_at_least_35():
+    # v0.1 had 19, v0.2 adds 16 (11 main + 5 layer/undo) — should be at least 35.
+    assert len(_dispatchers._HANDLERS) >= 35, (
+        f"expected 35+ handlers, got {len(_dispatchers._HANDLERS)}: "
         f"{sorted(_dispatchers._HANDLERS)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Layer add/delete + undo/redo + bake_range
+# ---------------------------------------------------------------------------
+
+
+def test_layer_add_requires_name(fake_scene):
+    with pytest.raises(ValueError, match="name"):
+        _dispatchers._d_layer_add({}, fake_scene)
+
+
+def test_layer_add_runs_modify_with_session(fake_scene):
+    _run_mod_immediately(fake_scene, "modify_with_session")
+    out = _dispatchers._d_layer_add({"name": "Body"}, fake_scene)
+    assert out["name"] == "Body"
+    fake_scene.modify_with_session.assert_called_once()
+
+
+def test_layer_delete_requires_layer_id(fake_scene):
+    with pytest.raises(ValueError, match="layer_id"):
+        _dispatchers._d_layer_delete({}, fake_scene)
+
+
+def test_layer_delete_404s_unknown_id(fake_scene):
+    with pytest.raises(ValueError, match="not found"):
+        _dispatchers._d_layer_delete({"layer_id": "ghost"}, fake_scene)
+
+
+def test_undo_invokes_scene_undo(csc_mock, fake_scene):
+    out = _dispatchers._d_undo({}, fake_scene)
+    assert out["invoked"] == "Scene.Undo"
+    am = csc_mock.app.get_application.return_value.get_action_manager.return_value
+    am.call_action.assert_called_with("Scene.Undo")
+
+
+def test_redo_invokes_scene_redo(csc_mock, fake_scene):
+    out = _dispatchers._d_redo({}, fake_scene)
+    assert out["invoked"] == "Scene.Redo"
+    am = csc_mock.app.get_application.return_value.get_action_manager.return_value
+    am.call_action.assert_called_with("Scene.Redo")
+
+
+def test_bake_range_requires_layer_id(fake_scene):
+    with pytest.raises(ValueError, match="layer_id"):
+        _dispatchers._d_bake_range({"frame_start": 0, "frame_end": 10}, fake_scene)
+
+
+def test_bake_range_rejects_inverted_range(fake_scene):
+    with pytest.raises(ValueError, match="frame_end"):
+        _dispatchers._d_bake_range(
+            {"layer_id": "x", "frame_start": 30, "frame_end": 10}, fake_scene
+        )
+
+
+def test_bake_range_404s_unknown_layer(fake_scene):
+    with pytest.raises(ValueError, match="not found"):
+        _dispatchers._d_bake_range(
+            {"layer_id": "ghost", "frame_start": 0, "frame_end": 5}, fake_scene
+        )
 
 
 # os import used above for path joins in fixtures

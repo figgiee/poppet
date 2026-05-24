@@ -1246,6 +1246,152 @@ def _d_viewport_screenshot(params, scene):
 
 
 # ============================================================================
+# Layer create / delete + animation utilities
+# ============================================================================
+
+
+def _d_layer_add(params, scene):
+    """Create a new animation layer. Pattern from common/layers_operation.py.
+
+    Params:
+      name: str (required)
+      parent_id: str (optional, stringified parent LayerId)
+    """
+    import csc
+
+    name = params.get("name")
+    if not name:
+        raise ValueError("'name' is required")
+    parent_str = params.get("parent_id")
+
+    out = {"name": name}
+
+    def mod(model, update, sc, session):
+        try:
+            le = session.layers_editor()
+        except Exception as e:
+            out["error"] = f"layers_editor: {e}"
+            return
+        # Resolve parent: use stringified id match, fall back to root.
+        parent_id = None
+        if parent_str:
+            for lid in scene.layers_viewer().all_layer_ids():
+                if _id_str(lid) == parent_str:
+                    parent_id = lid
+                    break
+            if parent_id is None:
+                out["parent_warning"] = f"parent_id {parent_str!r} not found; creating at root"
+        if parent_id is None:
+            try:
+                parent_id = scene.layers_viewer().root_id()
+            except Exception:
+                parent_id = csc.layers.LayerId.null() if hasattr(csc, "layers") else None
+        try:
+            new_id = le.create_layer(name, parent_id)
+            out["layer_id"] = _id_str(new_id)
+            out["created"] = True
+        except Exception as e:
+            out["error"] = f"create_layer: {e}"
+
+    scene.modify_with_session("Poppet: add layer", mod)
+    return out
+
+
+def _d_layer_delete(params, scene):
+    """Delete a layer by id."""
+    layer_id_str = params.get("layer_id")
+    if not layer_id_str:
+        raise ValueError("'layer_id' is required")
+    lid, _ = _resolve_layer(scene, layer_id_str)
+    if lid is None:
+        raise ValueError(f"layer_id not found: {layer_id_str!r}")
+
+    err = {"value": None}
+
+    def mod(model, update, sc, session):
+        try:
+            le = session.layers_editor()
+            le.delete_layer(lid)
+        except Exception as e:
+            err["value"] = f"{type(e).__name__}: {e}"
+
+    scene.modify_with_session("Poppet: delete layer", mod)
+    out = {"layer_id": layer_id_str, "deleted": err["value"] is None}
+    if err["value"]:
+        out["error"] = err["value"]
+    return out
+
+
+def _d_undo(params, scene):
+    """Wraps the Scene.Undo action."""
+    import csc
+
+    app = csc.app.get_application()
+    app.get_action_manager().call_action("Scene.Undo")
+    return {"invoked": "Scene.Undo"}
+
+
+def _d_redo(params, scene):
+    """Wraps the Scene.Redo action."""
+    import csc
+
+    app = csc.app.get_application()
+    app.get_action_manager().call_action("Scene.Redo")
+    return {"invoked": "Scene.Redo"}
+
+
+def _d_bake_range(params, scene):
+    """Bake keyframes across a frame range on the given layer.
+
+    Pattern from commands/animation_scripts/reverse_animation.py — calls
+    layers_editor.set_fixed_interpolation_or_key_if_need(layer_id, frame, True)
+    for every frame in [frame_start, frame_end] to materialize per-frame keys.
+    """
+    layer_id_str = params.get("layer_id")
+    frame_start = int(params.get("frame_start", 0))
+    frame_end = int(params.get("frame_end", 0))
+    if not layer_id_str:
+        raise ValueError("'layer_id' is required")
+    if frame_end < frame_start:
+        raise ValueError("frame_end must be >= frame_start")
+    lid, _ = _resolve_layer(scene, layer_id_str)
+    if lid is None:
+        raise ValueError(f"layer_id not found: {layer_id_str!r}")
+
+    out = {
+        "layer_id": layer_id_str,
+        "frame_start": frame_start,
+        "frame_end": frame_end,
+        "baked_count": 0,
+    }
+    err = {"value": None}
+
+    def mod(model, update, sc, session):
+        try:
+            le = session.layers_editor()
+        except Exception as e:
+            err["value"] = f"layers_editor: {e}"
+            return
+        baked = 0
+        last_err = None
+        for f in range(frame_start, frame_end + 1):
+            try:
+                le.set_fixed_interpolation_or_key_if_need(lid, f, True)
+                baked += 1
+            except Exception as e:
+                last_err = f"frame {f}: {e}"
+                # Continue — best-effort baking.
+        out["baked_count"] = baked
+        if last_err and baked == 0:
+            err["value"] = last_err
+
+    scene.modify_with_session("Poppet: bake range", mod)
+    if err["value"]:
+        out["error"] = err["value"]
+    return out
+
+
+# ============================================================================
 # Schema (introspection cache)
 # ============================================================================
 
@@ -1351,4 +1497,10 @@ _HANDLERS = {
     "object_duplicate": _d_object_duplicate,
     # New in v0.2 — viewport
     "viewport_screenshot": _d_viewport_screenshot,
+    # New in v0.3 — layer create/delete + undo/redo + range bake
+    "layer_add": _d_layer_add,
+    "layer_delete": _d_layer_delete,
+    "undo": _d_undo,
+    "redo": _d_redo,
+    "bake_range": _d_bake_range,
 }

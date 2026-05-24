@@ -30,6 +30,12 @@ All notable changes to Poppet — Cascadeur MCP. Follows
     `Scene.Edit.*` action ID fallback.
   - `screenshot_viewport(path)` — `csc.tools.RenderToFile.editor.take_image`
     with `Viewport.*` action ID fallback.
+  - `add_layer(name, parent_id?)` / `delete_layer(layer_id)` — wraps
+    `session.layers_editor().create_layer/delete_layer`.
+  - `undo()` / `redo()` — wraps `Scene.Undo` / `Scene.Redo` action IDs.
+  - `bake_range(layer_id, frame_start, frame_end)` — bulk-bake per-frame
+    keys via `set_fixed_interpolation_or_key_if_need`, pattern from
+    `commands/animation_scripts/reverse_animation.py`.
 - **CI** — `.github/workflows/ci.yml`: ruff lint, syntax check on
   `cascadeur_side/` under real Python 3.8 (matches Cascadeur's embedded
   interpreter), pytest matrix (ubuntu + windows × py3.11 + py3.12), MCP
@@ -53,7 +59,7 @@ All notable changes to Poppet — Cascadeur MCP. Follows
   is silently no-op in Cascadeur 2025.3.3.
 - `import_fbx` MCP tool now accepts `target = "scene" | "animation"` (was
   hard-coded to "scene").
-- MCP tool count: **20 → 31** + 1 resource (`csc://schema`).
+- MCP tool count: **20 → 36** + 1 resource (`csc://schema`).
 
 ### Fixed
 
