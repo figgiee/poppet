@@ -4,6 +4,34 @@ All notable changes to Poppet — Cascadeur MCP. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per
 [SemVer](https://semver.org/).
 
+## [0.5.0] — 2026-05-24
+
+### Added
+
+- **`selection_extend(object_names)` / `selection_subtract(object_names)`** —
+  set-union and set-difference operations on the current selection. Lets
+  Claude build a complex selection incrementally (e.g., add both feet to
+  whatever's already selected, then subtract a stray IK helper).
+- **`read_telemetry_range(controller_ids, frame_start, frame_end, step, local)`** —
+  bulk-read controller transforms across an inclusive frame range with a
+  configurable step. Walks the update graph once instead of once per frame,
+  so it's much faster than N×M telemetry_read calls for dense reads.
+- **`.gitattributes`** — pins LF line endings for all source files; ends the
+  recurring CRLF conversion warnings on Windows checkouts.
+- **`CONTRIBUTING.md`** — how to clone, install, add a tool (dispatcher +
+  MCP wrapper + tests + docs), Python 3.8 compat rules for cascadeur_side/,
+  branch + PR conventions, release process.
+- **`.github/ISSUE_TEMPLATE/{bug_report,feature_request}.md`** — bug + feature
+  request templates with the diagnostic fields (install_check output,
+  dispatcher log) prefilled.
+- **`.github/pull_request_template.md`** — Summary + Test plan + Related
+  issues skeleton with the standard verification checklist.
+
+### Changed
+
+- MCP tool count: **40 → 43**.
+- Dispatcher count: **41 → 44**.
+
 ## [0.4.0] — 2026-05-24
 
 ### Added

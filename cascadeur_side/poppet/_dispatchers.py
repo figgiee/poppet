@@ -1422,6 +1422,122 @@ def _d_active_layer_get(params, scene):
     return out
 
 
+def _d_selection_extend(params, scene):
+    """Add names to the existing selection (union)."""
+    import csc
+
+    names = params.get("object_names", [])
+    if not isinstance(names, list):
+        raise ValueError("'object_names' must be a list")
+
+    # Resolve names + capture current selection.
+    to_add = []
+    missing = []
+    for n in names:
+        oid = _find_obj_by_name(scene, n)
+        if oid is None:
+            missing.append(n)
+        else:
+            to_add.append(oid)
+
+    existing = set()
+    try:
+        for sid in scene.selector().selected().ids:
+            if isinstance(sid, csc.model.ObjectId):
+                existing.add(sid)
+    except Exception:
+        pass
+
+    new_set = existing | set(to_add)
+    # focus: keep the existing focus if possible, else first of the new additions
+    focus = next(iter(to_add), None)
+    if focus is None:
+        focus = next(iter(existing), csc.model.ObjectId.null())
+
+    def mod(model, update, sc, session):
+        session.take_selector().select(new_set, focus)
+
+    scene.modify_with_session("Poppet: selection_extend", mod)
+    return {
+        "added": [n for n in names if n not in missing],
+        "missing": missing,
+        "selection_count": len(new_set),
+    }
+
+
+def _d_selection_subtract(params, scene):
+    """Remove names from the existing selection (difference)."""
+    import csc
+
+    names = params.get("object_names", [])
+    if not isinstance(names, list):
+        raise ValueError("'object_names' must be a list")
+
+    to_remove_ids = set()
+    missing = []
+    for n in names:
+        oid = _find_obj_by_name(scene, n)
+        if oid is None:
+            missing.append(n)
+        else:
+            to_remove_ids.add(oid)
+
+    existing = set()
+    try:
+        for sid in scene.selector().selected().ids:
+            if isinstance(sid, csc.model.ObjectId):
+                existing.add(sid)
+    except Exception:
+        pass
+
+    new_set = existing - to_remove_ids
+    focus = next(iter(new_set), csc.model.ObjectId.null())
+
+    def mod(model, update, sc, session):
+        session.take_selector().select(new_set, focus)
+
+    scene.modify_with_session("Poppet: selection_subtract", mod)
+    return {
+        "removed": [n for n in names if n not in missing],
+        "missing": missing,
+        "selection_count": len(new_set),
+    }
+
+
+def _d_telemetry_read_range(params, scene):
+    """Bulk-read controller transforms across a frame range.
+
+    More efficient than calling telemetry_read once per frame because we
+    walk the update graph once. Returns a frames-indexed dict per controller.
+
+    Params:
+      controller_ids: list[str]
+      frame_start: int
+      frame_end: int (inclusive)
+      step: int (default 1 — sample every Nth frame)
+      local: bool (default True)
+    """
+    controllers = params.get("controller_ids", [])
+    if not isinstance(controllers, list) or not controllers:
+        raise ValueError("'controller_ids' must be a non-empty list")
+    frame_start = int(params.get("frame_start", 0))
+    frame_end = int(params.get("frame_end", 0))
+    step = int(params.get("step", 1))
+    if step < 1:
+        raise ValueError("'step' must be >= 1")
+    if frame_end < frame_start:
+        raise ValueError("'frame_end' must be >= frame_start")
+    use_local = params.get("local", True)
+
+    frames = list(range(frame_start, frame_end + 1, step))
+
+    # Reuse telemetry_read's resolution + read logic.
+    return _d_telemetry_read(
+        {"controller_ids": controllers, "frames": frames, "local": use_local},
+        scene,
+    )
+
+
 def _d_keyframe_add(params, scene):
     """Add a keyframe on `layer_id` at `frame`.
 
@@ -1772,4 +1888,8 @@ _HANDLERS = {
     "keyframe_add": _d_keyframe_add,
     "keyframe_remove": _d_keyframe_remove,
     "controller_scale_set": _d_set_controller_scale,
+    # v0.5
+    "selection_extend": _d_selection_extend,
+    "selection_subtract": _d_selection_subtract,
+    "telemetry_read_range": _d_telemetry_read_range,
 }
