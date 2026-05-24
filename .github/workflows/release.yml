@@ -1,0 +1,92 @@
+name: release
+
+# Builds the wheel + sdist on every tag push (v*) and uploads to PyPI.
+# Requires PYPI_API_TOKEN secret (Trusted Publishing also works — drop the
+# password block if you switch).
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # for creating the GitHub release
+  id-token: write   # for PyPI Trusted Publishing (if enabled)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+      - name: Build wheel + sdist
+        run: python -m build --wheel --sdist
+      - name: Validate distributions
+        run: python -m twine check dist/*
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  pypi-publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/poppet-mcp/
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Token path — set PYPI_API_TOKEN in repo secrets. If you've
+          # configured Trusted Publishing on PyPI, drop the `password:`
+          # line and PyPI will use the workflow's OIDC identity.
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+
+  github-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Extract changelog entry for this tag
+        id: changelog
+        run: |
+          # Pull the section under `## [<version>]` from CHANGELOG.md.
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VERSION" '
+            /^## \[/ {
+              if (capture) exit
+              if ($0 ~ "## \\[" ver "\\]") capture = 1
+              next
+            }
+            capture { print }
+          ' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "No CHANGELOG entry for $VERSION — using a generic message."
+            echo "Poppet $VERSION." > release_notes.md
+          fi
+      - name: Attach artifacts to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          body_path: release_notes.md
+          tag_name: ${{ github.ref_name }}
+          name: Poppet ${{ github.ref_name }}
+          generate_release_notes: false
