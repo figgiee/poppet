@@ -36,7 +36,7 @@ Claude ──MCP stdio──▶ poppet-mcp (host process, uvx-installable)
 - `csc.*` exposes no main-thread scheduler / event-post / dispatch API (verified — 115 candidate methods searched, none match)
 - Background `threading.Thread` only runs its first GIL slice and is then starved indefinitely (verified with minimal `time.sleep() + print()` loop)
 
-The file-sync pattern routes around all three limitations by piggybacking on Cascadeur's normal command-invocation path (which runs on the Qt main thread with full csc.* access).
+The file-sync pattern routes around all three limitations by piggybacking on Cascadeur's normal command-invocation path (which runs on the Qt main thread with full csc.* access). See [docs/architecture.md](docs/architecture.md) for the longer write-up.
 
 ## Install
 
