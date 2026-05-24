@@ -49,19 +49,23 @@ def main() -> int:
     tests = [
         ("scene_info", {}),
         ("objects_list", {"name_contains": "Box"}),
-        ("set_controller_position",
-            {"controller_id": "pelvis_Box", "frame": 0, "x": 0, "y": 0, "z": 30}),
+        (
+            "set_controller_position",
+            {"controller_id": "pelvis_Box", "frame": 0, "x": 0, "y": 0, "z": 30},
+        ),
         ("selection_set", {"object_names": ["foot_Box_l", "foot_Box_r"]}),
         ("autopose_run", {}),
         ("autophysics_run", {"timeout_sec": 5}),
-        ("telemetry_read",
-            {"controller_ids": ["pelvis_Box", "foot_Box_l", "foot_Box_r"], "frames": [0]}),
+        (
+            "telemetry_read",
+            {"controller_ids": ["pelvis_Box", "foot_Box_l", "foot_Box_r"], "frames": [0]},
+        ),
         ("fbx_export", {"path": fbx_out}),
     ]
 
     ids: list[tuple[str, str]] = []
     for i, (cmd, params) in enumerate(tests):
-        rid = "{:02d}-{}-{}".format(i, cmd, str(uuid.uuid4())[:6])
+        rid = f"{i:02d}-{cmd}-{str(uuid.uuid4())[:6]}"
         path = os.path.join(req_dir, rid + ".json")
         # set_controller_position is an MCP-level alias; the dispatcher
         # expects keyframe_set with a transform dict. Map it here for the
@@ -94,7 +98,7 @@ def main() -> int:
             resp_path = os.path.join(resp_dir, rid + ".json")
             if os.path.exists(resp_path):
                 try:
-                    with open(resp_path, "r", encoding="utf-8") as f:
+                    with open(resp_path, encoding="utf-8") as f:
                         resp = json.load(f)
                 except Exception:
                     continue

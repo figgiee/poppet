@@ -15,7 +15,6 @@ resources/scripts/python/commands/ — see change_namespace.py, restore_values.p
 common/selection_operations.py, common/layers_operation.py.
 """
 
-import json
 import os
 import time
 import traceback
@@ -27,14 +26,14 @@ def dispatch(message, scene):
     params = message.get("params") or {}
     handler = _HANDLERS.get(cmd_type)
     if handler is None:
-        return {"status": "error", "message": "unknown command: {!r}".format(cmd_type)}
+        return {"status": "error", "message": f"unknown command: {cmd_type!r}"}
     try:
         result = handler(params, scene)
         return {"status": "success", "result": result}
     except Exception as e:
         return {
             "status": "error",
-            "message": "{}: {}".format(type(e).__name__, e),
+            "message": f"{type(e).__name__}: {e}",
             "traceback": traceback.format_exc(),
         }
 
@@ -42,6 +41,7 @@ def dispatch(message, scene):
 # ============================================================================
 # Helpers (csc utilities adapted from common/selection_operations.py)
 # ============================================================================
+
 
 def _safe_repr(obj):
     try:
@@ -62,6 +62,7 @@ def _id_str(obj_id):
 def _selected_obj_ids(scene):
     """Return list of selected csc.model.ObjectId values (filter out non-objects)."""
     import csc
+
     sel = scene.selector().selected()
     return [sid for sid in sel.ids if isinstance(sid, csc.model.ObjectId)]
 
@@ -93,6 +94,7 @@ def _find_obj_by_name(scene, name):
 # Core
 # ============================================================================
 
+
 def _d_echo(params, scene):
     return params
 
@@ -103,6 +105,7 @@ def _d_exec_csc(params, scene):
     if not isinstance(code, str):
         raise ValueError("'code' must be a string")
     import csc
+
     ns = {"csc": csc, "scene": scene, "_result": None}
     try:
         ns["_result"] = eval(code, ns)
@@ -114,6 +117,7 @@ def _d_exec_csc(params, scene):
 def _d_call_action(params, scene):
     """Invoke a Cascadeur action by ID. Fire-and-forget."""
     import csc
+
     action_id = params.get("action_id")
     if not isinstance(action_id, str):
         raise ValueError("'action_id' must be a string")
@@ -126,6 +130,7 @@ def _d_call_action(params, scene):
 def _d_scene_info(params, scene):
     """Return scene metadata using the real csc.domain.Scene API surface."""
     import csc
+
     info = {"has_scene": True}
     try:
         info["current_frame"] = scene.get_current_frame()
@@ -161,6 +166,7 @@ def _d_scene_info(params, scene):
 # Selection
 # ============================================================================
 
+
 def _d_selection_get(params, scene):
     """List selected objects with name + id."""
     out = []
@@ -172,6 +178,7 @@ def _d_selection_get(params, scene):
 def _d_selection_set(params, scene):
     """Replace selection by object name list. Uses modify_with_session for undo."""
     import csc
+
     names = params.get("object_names", [])
     if not isinstance(names, list):
         raise ValueError("'object_names' must be a list")
@@ -233,6 +240,7 @@ def _d_objects_list(params, scene):
 # Layers / keyframes
 # ============================================================================
 
+
 def _d_layers_list(params, scene):
     """List animation layers — id + obj count + key count summary."""
     lv = scene.layers_viewer()
@@ -240,7 +248,7 @@ def _d_layers_list(params, scene):
     try:
         layer_ids = list(lv.all_layer_ids())
     except Exception as e:
-        return {"layers": [], "error": "all_layer_ids() failed: {}".format(e)}
+        return {"layers": [], "error": f"all_layer_ids() failed: {e}"}
 
     for lid in layer_ids:
         info = {"id": _id_str(lid)}
@@ -287,7 +295,7 @@ def _d_keyframes_get(params, scene):
             target = lid
             break
     if target is None:
-        raise ValueError("layer_id not found: {!r}".format(layer_id_str))
+        raise ValueError(f"layer_id not found: {layer_id_str!r}")
 
     layer = lv.layer(target)
     indices = list(layer.key_frame_indices())
@@ -337,7 +345,7 @@ def _d_keyframe_set(params, scene):
                 obj_id = oid
                 break
     if obj_id is None:
-        raise ValueError("controller not found by name or id: {!r}".format(controller))
+        raise ValueError(f"controller not found by name or id: {controller!r}")
 
     pos_node_name = "Local Position" if use_local else "Position"
     rot_node_name = "Local Rotation" if use_local else "Rotation"
@@ -350,21 +358,23 @@ def _d_keyframe_set(params, scene):
         try:
             node = update.get_object_by_id(obj_id).root_group()
         except Exception as e:
-            applied["error"] = "get_object_by_id failed: {}".format(e)
+            applied["error"] = f"get_object_by_id failed: {e}"
             return
 
         if position is not None:
             try:
                 pos_attr = node.node_deep(pos_node_name)
                 if pos_attr is None:
-                    applied["position_error"] = "node {!r} not on {!r}".format(pos_node_name, controller)
+                    applied["position_error"] = f"node {pos_node_name!r} not on {controller!r}"
                 else:
                     current = pos_attr.value(frame)
                     if current is not None:
                         # Type-preserving: delta from current keeps Vec3-like type.
-                        delta = [float(position[0]) - float(current[0]),
-                                 float(position[1]) - float(current[1]),
-                                 float(position[2]) - float(current[2])]
+                        delta = [
+                            float(position[0]) - float(current[0]),
+                            float(position[1]) - float(current[1]),
+                            float(position[2]) - float(current[2]),
+                        ]
                         new_pos = current + delta
                     else:
                         new_pos = [float(position[0]), float(position[1]), float(position[2])]
@@ -373,13 +383,13 @@ def _d_keyframe_set(params, scene):
                     applied["position"] = True
                     applied["position_new"] = _vec_to_list(new_pos)
             except Exception as e:
-                applied["position_error"] = "{}: {}".format(type(e).__name__, e)
+                applied["position_error"] = f"{type(e).__name__}: {e}"
 
         if rotation_quat is not None:
             try:
                 rot_attr = node.node_deep(rot_node_name)
                 if rot_attr is None:
-                    applied["rotation_error"] = "node {!r} not on {!r}".format(rot_node_name, controller)
+                    applied["rotation_error"] = f"node {rot_node_name!r} not on {controller!r}"
                 else:
                     qx, qy, qz, qw = (float(x) for x in rotation_quat)
                     euler = _quat_to_euler_xyz(qx, qy, qz, qw)
@@ -388,14 +398,14 @@ def _d_keyframe_set(params, scene):
                     actuals.add(rot_attr.data_id())
                     applied["rotation"] = True
             except Exception as e:
-                applied["rotation_error"] = "{}: {}".format(type(e).__name__, e)
+                applied["rotation_error"] = f"{type(e).__name__}: {e}"
 
         actuals_acc.extend(actuals)
         if actuals:
             try:
                 scene_updater.run_update(actuals, frame)
             except Exception as e:
-                applied["run_update_error"] = "{}: {}".format(type(e).__name__, e)
+                applied["run_update_error"] = f"{type(e).__name__}: {e}"
 
     scene.modify_update("Poppet: set keyframe", mod)
     return {
@@ -410,9 +420,11 @@ def _d_keyframe_set(params, scene):
 # AutoPosing / AutoPhysics
 # ============================================================================
 
+
 def _d_autopose_run(params, scene):
     """Wrap AutoPosingTool.AutoPosing action."""
     import csc
+
     app = csc.app.get_application()
     am = app.get_action_manager()
     am.call_action("AutoPosingTool.AutoPosing")
@@ -426,6 +438,7 @@ def _d_autophysics_run(params, scene):
     fingerprint until it stops changing or timeout fires.
     """
     import csc
+
     timeout_sec = float(params.get("timeout_sec", 30.0))
     poll_interval = float(params.get("poll_interval", 0.25))
 
@@ -522,7 +535,7 @@ def _d_telemetry_read(params, scene):
             try:
                 node = update.get_object_by_id(oid).root_group()
             except Exception as e:
-                telemetry[label] = {"error": "get_object_by_id: {}".format(e)}
+                telemetry[label] = {"error": f"get_object_by_id: {e}"}
                 continue
             pos_attr = node.node_deep(pos_node_name)
             rot_attr = node.node_deep(rot_node_name)
@@ -553,7 +566,9 @@ def _d_telemetry_read(params, scene):
                             try:
                                 e_ang = r.to_euler_angles()
                                 entry["rotation_euler"] = _vec_to_list(e_ang) or [
-                                    float(e_ang[0]), float(e_ang[1]), float(e_ang[2])
+                                    float(e_ang[0]),
+                                    float(e_ang[1]),
+                                    float(e_ang[2]),
                                 ]
                             except Exception:
                                 entry["rotation_repr"] = _safe_repr(r)
@@ -575,6 +590,7 @@ def _d_telemetry_read(params, scene):
 # FBX I/O
 # ============================================================================
 
+
 def _fbx_loader_and_settings(scope="scene"):
     """Get the FbxSceneLoader's loader + return configured FbxSettings.
 
@@ -584,6 +600,7 @@ def _fbx_loader_and_settings(scope="scene"):
     """
     import csc
     from csc import fbx
+
     app = csc.app.get_application()
     scene_pr = app.get_scene_manager().current_scene()
     loader_tool = app.get_tools_manager().get_tool("FbxSceneLoader")
@@ -604,11 +621,12 @@ def _d_fbx_export(params, scene):
     is the canonical Cascadeur dialog-free entry point.
     """
     import os
+
     path = params.get("path")
     if not isinstance(path, str) or not path:
         raise ValueError("'path' must be a non-empty string")
     if not os.path.isabs(path):
-        raise ValueError("'path' must be absolute: {!r}".format(path))
+        raise ValueError(f"'path' must be absolute: {path!r}")
     # Make sure target dir exists (FbxLoader errors out if it doesn't).
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -628,19 +646,24 @@ def _d_fbx_export(params, scene):
         "path": normalized,
         "exists": exists,
         "size_bytes": size,
-        "settings": {"mode": "Binary", "up_axis": "Y",
-                     "bake_animation": True, "apply_euler_filter": True},
+        "settings": {
+            "mode": "Binary",
+            "up_axis": "Y",
+            "bake_animation": True,
+            "apply_euler_filter": True,
+        },
     }
 
 
 def _d_fbx_import(params, scene):
     """Import an FBX file into the current scene without a dialog."""
     import os
+
     path = params.get("path")
     if not isinstance(path, str) or not path:
         raise ValueError("'path' must be a non-empty string")
     if not os.path.exists(path):
-        raise ValueError("FBX file not found: {!r}".format(path))
+        raise ValueError(f"FBX file not found: {path!r}")
     normalized = path.replace("\\", "/")
     loader, _ = _fbx_loader_and_settings()
     # FbxLoader.import_scene loads the whole file as a new scene.
@@ -657,42 +680,583 @@ def _d_fbx_import(params, scene):
 # Frame / playhead
 # ============================================================================
 
+
 def _d_frame_get(params, scene):
     return {"current_frame": scene.get_current_frame()}
 
 
 def _d_frame_set(params, scene):
-    """Attempt to move the playhead. KNOWN BUG: in Cascadeur 2025.3.3 neither
-    scene.set_current_frame() nor session.set_current_frame() actually persist
-    the playhead — both accept the value but get_current_frame() still returns
-    the prior frame. The real playhead setter is likely on csc.view.Scene's
-    animation_boundary or requires a UI message dispatch we haven't found.
+    """Move the playhead. Pattern from bundled export_to_roblox.py:
 
-    Returns the post-call get to surface whether the change stuck.
-    Use call_action with a Timeline.* action ID as a workaround until resolved.
+        def mod(model, update, scene_updater, session):
+            session.set_current_frame(frame_num)
+        scene.modify_update_with_session("...", mod)
+
+    The set_current_frame call MUST be inside the modify_update_with_session
+    callback — bare scene.set_current_frame() or session.set_current_frame()
+    outside a session context is silently no-op in 2025.3.3.
     """
     frame = int(params["frame"])
-    # Try direct (no session); session-based had the same issue.
-    scene.set_current_frame(frame)
+    err = {"value": None}
+
+    def mod(model, update, scene_updater, session):
+        try:
+            session.set_current_frame(frame)
+        except Exception as e:
+            err["value"] = f"{type(e).__name__}: {e}"
+
+    try:
+        scene.modify_update_with_session("Poppet: set frame", mod)
+    except Exception as e:
+        err["value"] = f"modify_update_with_session: {type(e).__name__}: {e}"
+
     actual = scene.get_current_frame()
-    return {
+    out = {
         "requested": frame,
         "current_frame": actual,
         "persisted": actual == frame,
-        "note": "see _dispatchers.py _d_frame_set docstring for the known issue" if actual != frame else None,
     }
+    if err["value"]:
+        out["error"] = err["value"]
+    return out
+
+
+# ============================================================================
+# Scene file I/O (save / load / new)
+# ============================================================================
+
+
+def _d_save_scene(params, scene):
+    """Save the current scene to a .casc file via DataSourceManager.
+
+    Tries several method signatures because the API surface drifts between
+    Cascadeur versions — reports which variant worked.
+    """
+    import csc
+
+    path = params.get("path")
+    if not isinstance(path, str) or not path:
+        raise ValueError("'path' must be a non-empty string")
+    normalized = path.replace("\\", "/")
+    try:
+        os.makedirs(os.path.dirname(normalized), exist_ok=True)
+    except Exception:
+        pass
+
+    app = csc.app.get_application()
+    dsm = app.get_data_source_manager()
+    cur = app.current_scene()
+
+    last_err = None
+    method = None
+    for label, attempt in (
+        ("dsm.save_scene(cur, path)", lambda: dsm.save_scene(cur, normalized)),
+        ("dsm.save_scene(path, cur)", lambda: dsm.save_scene(normalized, cur)),
+        ("dsm.save(cur, path)", lambda: dsm.save(cur, normalized)),
+        ("cur.save(path)", lambda: cur.save(normalized)),
+    ):
+        try:
+            attempt()
+            method = label
+            last_err = None
+            break
+        except Exception as e:
+            last_err = f"{label}: {type(e).__name__}: {e}"
+
+    out = {"path": normalized}
+    if last_err and not method:
+        out["error"] = last_err
+        out["saved"] = False
+    else:
+        out["method"] = method
+        out["exists"] = os.path.exists(normalized)
+        out["size_bytes"] = os.path.getsize(normalized) if out["exists"] else 0
+        out["saved"] = True
+    return out
+
+
+def _d_load_scene(params, scene):
+    """Open a .casc file via DataSourceManager.load_scene."""
+    import csc
+
+    path = params.get("path")
+    if not isinstance(path, str) or not path:
+        raise ValueError("'path' must be a non-empty string")
+    if not os.path.exists(path):
+        raise ValueError(f"scene file not found: {path!r}")
+    normalized = path.replace("\\", "/")
+
+    app = csc.app.get_application()
+    dsm = app.get_data_source_manager()
+
+    last_err = None
+    method = None
+    for label, attempt in (
+        ("dsm.load_scene(path)", lambda: dsm.load_scene(normalized)),
+        ("dsm.open_scene(path)", lambda: dsm.open_scene(normalized)),
+    ):
+        try:
+            attempt()
+            method = label
+            last_err = None
+            break
+        except Exception as e:
+            last_err = f"{label}: {type(e).__name__}: {e}"
+
+    out = {"path": normalized, "loaded": method is not None}
+    if method:
+        out["method"] = method
+    if last_err and not method:
+        out["error"] = last_err
+    return out
+
+
+def _d_new_scene(params, scene):
+    """Create a fresh empty scene via SceneManager.create_application_scene."""
+    import csc
+
+    app = csc.app.get_application()
+    sm = app.get_scene_manager()
+
+    last_err = None
+    method = None
+    for label, attempt in (
+        ("sm.create_application_scene()", lambda: sm.create_application_scene()),
+        ("sm.create_scene()", lambda: sm.create_scene()),
+        ("sm.new_scene()", lambda: sm.new_scene()),
+    ):
+        try:
+            ns = attempt()
+            try:
+                sm.set_current_scene(ns)
+            except Exception:
+                pass
+            method = label
+            last_err = None
+            break
+        except Exception as e:
+            last_err = f"{label}: {type(e).__name__}: {e}"
+
+    out = {"created": method is not None}
+    if method:
+        out["method"] = method
+    if last_err and not method:
+        out["error"] = last_err
+    return out
+
+
+# ============================================================================
+# Object hierarchy + transforms
+# ============================================================================
+
+
+def _d_object_hierarchy(params, scene):
+    """Walk the scene's object hierarchy returning parent + children per object."""
+    mv = scene.model_viewer()
+    out = []
+    for oid in mv.get_objects():
+        entry = {"id": _id_str(oid)}
+        try:
+            entry["name"] = mv.get_object_name(oid)
+        except Exception:
+            entry["name"] = None
+        try:
+            entry["type"] = mv.get_object_type_name(oid)
+        except Exception:
+            entry["type"] = None
+        for getter in ("get_parent_id", "get_parent", "parent_id", "parent"):
+            try:
+                fn = getattr(mv, getter, None)
+                if fn is None:
+                    continue
+                pid = fn(oid)
+                if pid is not None:
+                    entry["parent_id"] = _id_str(pid)
+                    break
+            except Exception:
+                continue
+        for getter in ("get_children_ids", "get_children", "children_ids", "children"):
+            try:
+                fn = getattr(mv, getter, None)
+                if fn is None:
+                    continue
+                children = list(fn(oid))
+                entry["children_ids"] = [_id_str(c) for c in children]
+                break
+            except Exception:
+                continue
+        out.append(entry)
+    return {"objects": out, "count": len(out)}
+
+
+def _d_object_transform_get(params, scene):
+    """Read Position+Rotation+Scale on one object at a given frame.
+
+    Variant of telemetry_read for a single object with all three transforms.
+    """
+    name = params.get("object_name")
+    frame = int(params.get("frame", 0))
+    use_local = params.get("local", True)
+    if not name:
+        raise ValueError("'object_name' is required")
+
+    obj_id = _find_obj_by_name(scene, name)
+    if obj_id is None:
+        raise ValueError(f"object not found: {name!r}")
+
+    pos_name = "Local Position" if use_local else "Position"
+    rot_name = "Local Rotation" if use_local else "Rotation"
+    scale_name = "Local Scale" if use_local else "Scale"
+
+    out = {"object": name, "frame": frame}
+
+    def mod(model, update, scene_updater):
+        try:
+            node = update.get_object_by_id(obj_id).root_group()
+        except Exception as e:
+            out["error"] = f"get_object_by_id: {e}"
+            return
+        for label, node_name in (
+            ("position", pos_name),
+            ("rotation", rot_name),
+            ("scale", scale_name),
+        ):
+            try:
+                attr = node.node_deep(node_name)
+                if attr is None:
+                    out[label] = None
+                    continue
+                v = attr.value(frame)
+                listed = _vec_to_list(v)
+                if listed is not None:
+                    out[label] = listed
+                else:
+                    out[label + "_repr"] = _safe_repr(v)
+            except Exception as e:
+                out[label + "_error"] = f"{type(e).__name__}: {e}"
+
+    scene.modify_update("Poppet: read transform", mod)
+    return out
+
+
+def _d_object_attributes_list(params, scene):
+    """List all attribute node names on an object's root_group.
+
+    Helps the LLM discover what's settable on a controller without guessing
+    ("Local Position", "Local Rotation", "Local Scale", IK weights, etc.).
+    """
+    name = params.get("object_name")
+    if not name:
+        raise ValueError("'object_name' is required")
+    obj_id = _find_obj_by_name(scene, name)
+    if obj_id is None:
+        raise ValueError(f"object not found: {name!r}")
+
+    out = {"object": name, "attributes": []}
+
+    def mod(model, update, scene_updater):
+        try:
+            root = update.get_object_by_id(obj_id).root_group()
+        except Exception as e:
+            out["error"] = f"get_object_by_id: {e}"
+            return
+        attrs = []
+        # First: flat nodes() if available.
+        try:
+            for n in root.nodes():
+                try:
+                    attrs.append({"name": n.full_name()})
+                except Exception:
+                    try:
+                        attrs.append({"name": n.name()})
+                    except Exception:
+                        attrs.append({"repr": _safe_repr(n)})
+        except Exception:
+            pass
+        # Fallback: recursive children() walk.
+        if not attrs:
+
+            def walk(g, prefix=""):
+                try:
+                    for c in g.children():
+                        n = prefix + (c.name() if hasattr(c, "name") else "?")
+                        attrs.append({"name": n})
+                        try:
+                            walk(c, n + ".")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            walk(root)
+        out["attributes"] = attrs
+        out["count"] = len(attrs)
+
+    scene.modify_update("Poppet: read attributes", mod)
+    return out
+
+
+# ============================================================================
+# Layer ops
+# ============================================================================
+
+
+def _resolve_layer(scene, layer_id_str):
+    """Find (LayerId, Layer) by stringified id, or (None, None)."""
+    lv = scene.layers_viewer()
+    for lid in lv.all_layer_ids():
+        if _id_str(lid) == layer_id_str:
+            return lid, lv.layer(lid)
+    return None, None
+
+
+def _d_layer_visible_set(params, scene):
+    """Toggle layer visibility via layers_editor (or layer.set_visible fallback)."""
+    layer_id_str = params.get("layer_id")
+    visible = bool(params.get("visible", True))
+    if not layer_id_str:
+        raise ValueError("'layer_id' is required")
+    lid, layer = _resolve_layer(scene, layer_id_str)
+    if layer is None:
+        raise ValueError(f"layer_id not found: {layer_id_str!r}")
+
+    err = {"value": None}
+
+    def mod(model, update, sc, session):
+        try:
+            try:
+                ed = session.layers_editor()
+                ed.set_visible_for_layer(lid, visible)
+            except Exception:
+                layer.set_visible(visible)
+        except Exception as e:
+            err["value"] = f"{type(e).__name__}: {e}"
+
+    scene.modify_with_session("Poppet: set layer visible", mod)
+    out = {"layer_id": layer_id_str, "visible": visible}
+    if err["value"]:
+        out["error"] = err["value"]
+    return out
+
+
+def _d_layer_locked_set(params, scene):
+    """Toggle layer lock via layers_editor (or layer.set_locked fallback)."""
+    layer_id_str = params.get("layer_id")
+    locked = bool(params.get("locked", True))
+    if not layer_id_str:
+        raise ValueError("'layer_id' is required")
+    lid, layer = _resolve_layer(scene, layer_id_str)
+    if layer is None:
+        raise ValueError(f"layer_id not found: {layer_id_str!r}")
+
+    err = {"value": None}
+
+    def mod(model, update, sc, session):
+        try:
+            try:
+                ed = session.layers_editor()
+                ed.set_locked_for_layer(lid, locked)
+            except Exception:
+                layer.set_locked(locked)
+        except Exception as e:
+            err["value"] = f"{type(e).__name__}: {e}"
+
+    scene.modify_with_session("Poppet: set layer locked", mod)
+    out = {"layer_id": layer_id_str, "locked": locked}
+    if err["value"]:
+        out["error"] = err["value"]
+    return out
+
+
+# ============================================================================
+# Object edit (delete / duplicate)
+# ============================================================================
+
+
+def _d_object_delete(params, scene):
+    """Delete an object by name. Tries model_editor first, falls back to action ID."""
+    import csc
+
+    name = params.get("object_name")
+    if not name:
+        raise ValueError("'object_name' is required")
+    obj_id = _find_obj_by_name(scene, name)
+    if obj_id is None:
+        raise ValueError(f"object not found: {name!r}")
+
+    # Strategy 1: model_editor.delete_objects([oid])
+    try:
+
+        def mod(model, update, sc, session):
+            me = session.model_editor()
+            me.delete_objects([obj_id])
+
+        scene.modify_with_session("Poppet: delete object", mod)
+        return {
+            "deleted": name,
+            "obj_id": _id_str(obj_id),
+            "method": "model_editor.delete_objects",
+        }
+    except Exception as e:
+        last_err = f"model_editor: {type(e).__name__}: {e}"
+
+    # Strategy 2: select then call Scene.Edit.Delete-style action.
+    try:
+
+        def sel(model, update, sc, session):
+            session.take_selector().select({obj_id}, obj_id)
+
+        scene.modify_with_session("Poppet: select for delete", sel)
+    except Exception as e:
+        last_err = f"select: {e}"
+
+    app = csc.app.get_application()
+    am = app.get_action_manager()
+    for action in ("Scene.Edit.Delete", "Edit.Delete", "Object.Delete"):
+        try:
+            am.call_action(action)
+            return {
+                "deleted": name,
+                "obj_id": _id_str(obj_id),
+                "method": f"call_action:{action}",
+            }
+        except Exception as e:
+            last_err = f"{action}: {e}"
+
+    return {"deleted": False, "obj_id": _id_str(obj_id), "last_error": last_err}
+
+
+def _d_object_duplicate(params, scene):
+    """Duplicate object by selecting it and invoking a duplicate action.
+
+    Returns the list of newly-created objects (object names that appeared in
+    the scene between before/after).
+    """
+    import csc
+
+    name = params.get("object_name")
+    if not name:
+        raise ValueError("'object_name' is required")
+    obj_id = _find_obj_by_name(scene, name)
+    if obj_id is None:
+        raise ValueError(f"object not found: {name!r}")
+
+    before = set()
+    try:
+        for oid in scene.model_viewer().get_objects():
+            before.add(_id_str(oid))
+    except Exception:
+        pass
+
+    def sel(model, update, sc, session):
+        session.take_selector().select({obj_id}, obj_id)
+
+    scene.modify_with_session("Poppet: select for duplicate", sel)
+
+    app = csc.app.get_application()
+    am = app.get_action_manager()
+    last_err = None
+    invoked = None
+    for action in ("Scene.Edit.Duplicate", "Edit.Duplicate", "Object.Duplicate"):
+        try:
+            am.call_action(action)
+            invoked = action
+            break
+        except Exception as e:
+            last_err = f"{action}: {e}"
+
+    after = []
+    try:
+        for oid in scene.model_viewer().get_objects():
+            sid = _id_str(oid)
+            if sid not in before:
+                try:
+                    nm = scene.model_viewer().get_object_name(oid)
+                    after.append({"id": sid, "name": nm})
+                except Exception:
+                    after.append({"id": sid})
+    except Exception:
+        pass
+
+    out = {"source": name, "source_id": _id_str(obj_id), "new_objects": after}
+    if invoked:
+        out["invoked"] = invoked
+    if last_err and not invoked:
+        out["error"] = last_err
+    return out
+
+
+# ============================================================================
+# Viewport screenshot
+# ============================================================================
+
+
+def _d_viewport_screenshot(params, scene):
+    """Capture the 3D viewport to an image file.
+
+    Tries RenderToFile tool first, falls back to Viewport.* action IDs.
+    """
+    import csc
+
+    path = params.get("path")
+    if not isinstance(path, str) or not path:
+        raise ValueError("'path' must be a non-empty string")
+    normalized = path.replace("\\", "/")
+    try:
+        os.makedirs(os.path.dirname(normalized), exist_ok=True)
+    except Exception:
+        pass
+
+    app = csc.app.get_application()
+    last_err = None
+
+    # Strategy 1: RenderToFile tool.
+    try:
+        tm = app.get_tools_manager()
+        rtf = tm.get_tool("RenderToFile")
+        view_scene = app.current_scene()
+        editor = rtf.editor(view_scene)
+        editor.take_image(normalized)
+        if os.path.exists(normalized):
+            return {
+                "path": normalized,
+                "exists": True,
+                "size_bytes": os.path.getsize(normalized),
+                "method": "RenderToFile.editor.take_image",
+            }
+    except Exception as e:
+        last_err = f"RenderToFile: {type(e).__name__}: {e}"
+
+    # Strategy 2: Viewport action fallbacks (path arg cannot be passed via call_action).
+    am = app.get_action_manager()
+    for action in ("Viewport.TakeScreenshot", "Viewport.Screenshot", "Render.Image"):
+        try:
+            am.call_action(action)
+            return {
+                "path": normalized,
+                "exists": os.path.exists(normalized),
+                "method": f"call_action:{action}",
+                "note": "action invoked but path arg couldn't be passed — "
+                "Cascadeur may have written to its default screenshot dir.",
+            }
+        except Exception as e:
+            last_err = f"{action}: {e}"
+
+    return {"path": normalized, "exists": False, "error": last_err}
 
 
 # ============================================================================
 # Schema (introspection cache)
 # ============================================================================
 
+
 def _d_schema_get(params, scene):
     from . import _introspect
+
     path = _introspect.schema_cache_path()
     if not os.path.exists(path):
         _introspect.dump_schema(path)
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         schema_json = f.read()
     return {"path": path, "schema_json_size": len(schema_json), "schema_json": schema_json}
 
@@ -700,6 +1264,7 @@ def _d_schema_get(params, scene):
 # ============================================================================
 # Internals
 # ============================================================================
+
 
 def _safe_call(fn):
     try:
@@ -715,6 +1280,7 @@ def _quat_to_euler_xyz(qx, qy, qz, qw):
     Returns [rx, ry, rz].
     """
     import math as _m
+
     # roll (X-axis rotation)
     sinr_cosp = 2.0 * (qw * qx + qy * qz)
     cosr_cosp = 1.0 - 2.0 * (qx * qx + qy * qy)
@@ -769,4 +1335,20 @@ _HANDLERS = {
     "frame_get": _d_frame_get,
     "frame_set": _d_frame_set,
     "schema_get": _d_schema_get,
+    # New in v0.2 — scene file I/O
+    "save_scene": _d_save_scene,
+    "load_scene": _d_load_scene,
+    "new_scene": _d_new_scene,
+    # New in v0.2 — hierarchy + transforms
+    "object_hierarchy": _d_object_hierarchy,
+    "object_transform_get": _d_object_transform_get,
+    "object_attributes_list": _d_object_attributes_list,
+    # New in v0.2 — layer ops
+    "layer_visible_set": _d_layer_visible_set,
+    "layer_locked_set": _d_layer_locked_set,
+    # New in v0.2 — object edit
+    "object_delete": _d_object_delete,
+    "object_duplicate": _d_object_duplicate,
+    # New in v0.2 — viewport
+    "viewport_screenshot": _d_viewport_screenshot,
 }

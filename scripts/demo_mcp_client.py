@@ -73,18 +73,26 @@ async def run_demo() -> int:
 
             banner("STEP 3: set sparse keys — pelvis up at frame 0")
             drain_prompt("set_controller_position pelvis_Box (0,0,30)")
-            r = await session.call_tool("set_controller_position", {
-                "controller_id": "pelvis_Box",
-                "frame": 0,
-                "x": 0, "y": 0, "z": 30,
-            })
+            r = await session.call_tool(
+                "set_controller_position",
+                {
+                    "controller_id": "pelvis_Box",
+                    "frame": 0,
+                    "x": 0,
+                    "y": 0,
+                    "z": 30,
+                },
+            )
             print(r.content[0].text if r.content else r)
 
             banner("STEP 4: select feet for AutoPosing anchors")
             drain_prompt("set_selection foot_Box_l + foot_Box_r")
-            r = await session.call_tool("set_selection", {
-                "object_names": ["foot_Box_l", "foot_Box_r"],
-            })
+            r = await session.call_tool(
+                "set_selection",
+                {
+                    "object_names": ["foot_Box_l", "foot_Box_r"],
+                },
+            )
             print(r.content[0].text if r.content else r)
 
             banner("STEP 5: run AutoPosing")
@@ -99,10 +107,13 @@ async def run_demo() -> int:
 
             banner("STEP 7: read telemetry")
             drain_prompt("read_telemetry")
-            r = await session.call_tool("read_telemetry", {
-                "controller_ids": ["pelvis_Box", "foot_Box_l", "foot_Box_r"],
-                "frames": [0],
-            })
+            r = await session.call_tool(
+                "read_telemetry",
+                {
+                    "controller_ids": ["pelvis_Box", "foot_Box_l", "foot_Box_r"],
+                    "frames": [0],
+                },
+            )
             print((r.content[0].text if r.content else str(r))[:800])
 
             banner("STEP 8: export FBX")

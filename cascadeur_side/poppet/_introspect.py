@@ -70,6 +70,7 @@ def schema_cache_path():
 
 def dump_schema(path=None):
     import csc
+
     if path is None:
         path = schema_cache_path()
     schema = extract_module_schema(csc)
@@ -85,6 +86,7 @@ def dump_schema(path=None):
 def _detect_version():
     try:
         import csc
+
         v = getattr(csc, "Version", None)
         if v is None:
             return None

@@ -26,7 +26,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
+    "pytest>=7",
+    "pytest-mock>=3",
     "ruff>=0.5",
 ]
 
@@ -42,7 +43,27 @@ packages = ["src/poppet_mcp"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+# Global target is py38 — cascadeur_side/ runs inside Cascadeur's embedded
+# Python 3.8 interpreter, so it must stay 3.8-compatible. The MCP server in
+# src/ and tests/ require 3.11+, but a py38-targeted UP rule set is the
+# safe superset (it won't suggest 3.9+ syntax that would break cascadeur_side).
+target-version = "py38"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM"]
+select = ["E", "F", "I", "UP"]
+# UP006/UP007/UP035/UP045: rewrite typing.List -> list, Optional[X] -> X | None,
+# etc. These require py39/py310 syntax — disabled because cascadeur_side must
+# stay 3.8-compatible and the global target is py38.
+ignore = ["UP006", "UP007", "UP035", "UP045"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and the src/ MCP server target py311+, so they're free to use modern
+# annotation syntax (`dict | None`, etc.). The `from __future__ import
+# annotations` lines in cascadeur_side/_framing.py and elsewhere are
+# load-bearing for 3.8 compat — never let ruff strip them.
+"cascadeur_side/**/*.py" = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "cascadeur_side"]
+addopts = "-ra"

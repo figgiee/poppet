@@ -41,6 +41,7 @@ def _call(command: str, **params: Any) -> Any:
 # Core
 # ----------------------------------------------------------------------------
 
+
 @mcp.tool()
 def get_scene_info() -> dict:
     """Get basic Cascadeur scene info — name, frame count, fps, whether a scene is open."""
@@ -122,6 +123,7 @@ def call_action(action_id: str) -> dict:
 # Animation layers / keyframes
 # ----------------------------------------------------------------------------
 
+
 @mcp.tool()
 def list_layers() -> dict:
     """List animation layers (tracks) in the current scene."""
@@ -131,18 +133,15 @@ def list_layers() -> dict:
 @mcp.tool()
 def get_keyframes(layer_id: str, frame_start: int, frame_end: int) -> dict:
     """Get keyframes on a layer between frame_start and frame_end (inclusive)."""
-    return _call("keyframes_get", layer_id=layer_id,
-                 frame_start=frame_start, frame_end=frame_end)
+    return _call("keyframes_get", layer_id=layer_id, frame_start=frame_start, frame_end=frame_end)
 
 
 @mcp.tool()
-def set_controller_position(
-    controller_id: str, frame: int, x: float, y: float, z: float
-) -> dict:
+def set_controller_position(controller_id: str, frame: int, x: float, y: float, z: float) -> dict:
     """Set a controller's world-space position at the given frame."""
-    return _call("keyframe_set",
-                 controller_id=controller_id, frame=frame,
-                 transform={"position": [x, y, z]})
+    return _call(
+        "keyframe_set", controller_id=controller_id, frame=frame, transform={"position": [x, y, z]}
+    )
 
 
 @mcp.tool()
@@ -150,30 +149,40 @@ def set_controller_rotation(
     controller_id: str, frame: int, qx: float, qy: float, qz: float, qw: float
 ) -> dict:
     """Set a controller's rotation (quaternion) at the given frame."""
-    return _call("keyframe_set",
-                 controller_id=controller_id, frame=frame,
-                 transform={"rotation": [qx, qy, qz, qw]})
+    return _call(
+        "keyframe_set",
+        controller_id=controller_id,
+        frame=frame,
+        transform={"rotation": [qx, qy, qz, qw]},
+    )
 
 
 @mcp.tool()
 def add_keyframe(layer_id: str, frame: int) -> dict:
     """Add a keyframe at `frame` on `layer_id` (uses current selection)."""
-    return _call("keyframe_set",
-                 controller_id=None, frame=frame,
-                 transform={"add": True, "layer_id": layer_id})
+    return _call(
+        "keyframe_set",
+        controller_id=None,
+        frame=frame,
+        transform={"add": True, "layer_id": layer_id},
+    )
 
 
 @mcp.tool()
 def remove_keyframe(layer_id: str, frame: int) -> dict:
     """Remove the keyframe at `frame` on `layer_id`."""
-    return _call("keyframe_set",
-                 controller_id=None, frame=frame,
-                 transform={"remove": True, "layer_id": layer_id})
+    return _call(
+        "keyframe_set",
+        controller_id=None,
+        frame=frame,
+        transform={"remove": True, "layer_id": layer_id},
+    )
 
 
 # ----------------------------------------------------------------------------
 # AutoPosing / AutoPhysics — the spec §4 closed loop
 # ----------------------------------------------------------------------------
+
 
 @mcp.tool()
 def run_autoposing() -> dict:
@@ -208,29 +217,149 @@ def read_telemetry(controller_ids: list[str], frames: list[int]) -> dict:
     solver produced and feed the result back to the model so it can correct
     drift or refine timing.
     """
-    return _call("telemetry_read",
-                 controller_ids=controller_ids, frames=frames)
+    return _call("telemetry_read", controller_ids=controller_ids, frames=frames)
 
 
 # ----------------------------------------------------------------------------
 # FBX I/O
 # ----------------------------------------------------------------------------
 
+
 @mcp.tool()
-def import_fbx(path: str) -> dict:
-    """Import an FBX file into the current scene."""
-    return _call("fbx_import", path=path)
+def import_fbx(path: str, target: str = "scene") -> dict:
+    """Import an FBX file into the current scene.
+
+    target = "scene" (default) loads the entire file as scene contents.
+    target = "animation" imports animation only into the current scene.
+    """
+    return _call("fbx_import", path=path, target=target)
 
 
 @mcp.tool()
 def export_fbx(path: str) -> dict:
-    """Export the current scene to an FBX file."""
+    """Export the current scene to an FBX file (binary, Y-up, baked animation)."""
     return _call("fbx_export", path=path)
+
+
+# ----------------------------------------------------------------------------
+# Scene file I/O
+# ----------------------------------------------------------------------------
+
+
+@mcp.tool()
+def save_scene(path: str) -> dict:
+    """Save the current scene to a .casc file via DataSourceManager."""
+    return _call("save_scene", path=path)
+
+
+@mcp.tool()
+def load_scene(path: str) -> dict:
+    """Open a .casc file in Cascadeur via DataSourceManager."""
+    return _call("load_scene", path=path)
+
+
+@mcp.tool()
+def new_scene() -> dict:
+    """Create a fresh empty scene via SceneManager.create_application_scene."""
+    return _call("new_scene")
+
+
+# ----------------------------------------------------------------------------
+# Object hierarchy + transforms
+# ----------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_object_hierarchy() -> dict:
+    """Walk the scene's object hierarchy returning parent + children per object.
+
+    Use this to understand the rig structure (which controllers attach to which
+    joints, what's parented to what) without introspecting csc.* directly.
+    """
+    return _call("object_hierarchy")
+
+
+@mcp.tool()
+def get_object_transform(object_name: str, frame: int = 0, local: bool = True) -> dict:
+    """Read Position+Rotation+Scale on a single object at a frame.
+
+    Variant of read_telemetry for one object — returns all three transforms at
+    once instead of just position+rotation across a frame range.
+    """
+    return _call("object_transform_get", object_name=object_name, frame=frame, local=local)
+
+
+@mcp.tool()
+def list_object_attributes(object_name: str) -> dict:
+    """List all attribute node names on an object's root_group.
+
+    Use this to discover what's settable on a controller (Position, Rotation,
+    Local Scale, IK weights, controller weights, etc.) before guessing names
+    in execute_csc_code.
+    """
+    return _call("object_attributes_list", object_name=object_name)
+
+
+# ----------------------------------------------------------------------------
+# Layer ops
+# ----------------------------------------------------------------------------
+
+
+@mcp.tool()
+def set_layer_visible(layer_id: str, visible: bool) -> dict:
+    """Toggle visibility on an animation layer."""
+    return _call("layer_visible_set", layer_id=layer_id, visible=visible)
+
+
+@mcp.tool()
+def set_layer_locked(layer_id: str, locked: bool) -> dict:
+    """Toggle lock on an animation layer."""
+    return _call("layer_locked_set", layer_id=layer_id, locked=locked)
+
+
+# ----------------------------------------------------------------------------
+# Object edit
+# ----------------------------------------------------------------------------
+
+
+@mcp.tool()
+def delete_object(object_name: str) -> dict:
+    """Delete an object by name.
+
+    Tries `model_editor.delete_objects([oid])` first, falls back to
+    `Scene.Edit.Delete` action after selecting the object.
+    """
+    return _call("object_delete", object_name=object_name)
+
+
+@mcp.tool()
+def duplicate_object(object_name: str) -> dict:
+    """Duplicate an object by name via `Scene.Edit.Duplicate`.
+
+    Returns the names of objects that newly appeared in the scene.
+    """
+    return _call("object_duplicate", object_name=object_name)
+
+
+# ----------------------------------------------------------------------------
+# Viewport screenshot
+# ----------------------------------------------------------------------------
+
+
+@mcp.tool()
+def screenshot_viewport(path: str) -> dict:
+    """Capture the 3D viewport to an image file.
+
+    Tries csc.tools.RenderToFile.editor.take_image first, falls back to
+    Viewport.* action IDs. Path must be absolute; PNG recommended.
+    """
+    return _call("viewport_screenshot", path=path)
 
 
 # ----------------------------------------------------------------------------
 # Resources
 # ----------------------------------------------------------------------------
+
 
 @mcp.resource("csc://schema")
 def csc_schema() -> str:
@@ -247,6 +376,7 @@ def csc_schema() -> str:
 # ----------------------------------------------------------------------------
 # Entry point
 # ----------------------------------------------------------------------------
+
 
 def main() -> None:
     mcp.run()

@@ -48,8 +48,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=53145)
-    ap.add_argument("--exec", dest="exec_code",
-                    help="Run arbitrary csc Python via exec_csc and print the result.")
+    ap.add_argument(
+        "--exec",
+        dest="exec_code",
+        help="Run arbitrary csc Python via exec_csc and print the result.",
+    )
     args = ap.parse_args()
 
     s = socket.socket()
@@ -58,8 +61,10 @@ def main() -> int:
         s.connect((args.host, args.port))
     except OSError as e:
         print(f"connect failed: {e}", file=sys.stderr)
-        print("Is Cascadeur running with 'Commands -> Poppet -> Start Server' active?",
-              file=sys.stderr)
+        print(
+            "Is Cascadeur running with 'Commands -> Poppet -> Start Server' active?",
+            file=sys.stderr,
+        )
         return 1
 
     if args.exec_code:
@@ -69,16 +74,19 @@ def main() -> int:
 
     # Default: walk through echo + scene_info + call_action(Scene.Undo).
     print("=== echo ===")
-    print(json.dumps(send_recv(s, {"type": "echo", "params": {"hello": "from poc_client"}}),
-                     indent=2))
+    print(
+        json.dumps(send_recv(s, {"type": "echo", "params": {"hello": "from poc_client"}}), indent=2)
+    )
     print()
     print("=== scene_info ===")
     print(json.dumps(send_recv(s, {"type": "scene_info", "params": {}}), indent=2))
     print()
     print("=== call_action: Scene.Undo (will no-op if nothing to undo) ===")
-    print(json.dumps(send_recv(s, {"type": "call_action",
-                                    "params": {"action_id": "Scene.Undo"}}),
-                     indent=2))
+    print(
+        json.dumps(
+            send_recv(s, {"type": "call_action", "params": {"action_id": "Scene.Undo"}}), indent=2
+        )
+    )
     s.close()
     return 0
 
