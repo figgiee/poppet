@@ -40,10 +40,12 @@ def percentile(values: list[float], pct: float) -> float:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--count", type=int, default=50,
-                    help="number of echo requests to send (default 50)")
-    ap.add_argument("--timeout", type=int, default=60,
-                    help="seconds to wait for drain (default 60)")
+    ap.add_argument(
+        "--count", type=int, default=50, help="number of echo requests to send (default 50)"
+    )
+    ap.add_argument(
+        "--timeout", type=int, default=60, help="seconds to wait for drain (default 60)"
+    )
     args = ap.parse_args(argv)
 
     base = base_dir()
