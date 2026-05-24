@@ -159,23 +159,46 @@ def set_controller_rotation(
 
 @mcp.tool()
 def add_keyframe(layer_id: str, frame: int) -> dict:
-    """Add a keyframe at `frame` on `layer_id` (uses current selection)."""
-    return _call(
-        "keyframe_set",
-        controller_id=None,
-        frame=frame,
-        transform={"add": True, "layer_id": layer_id},
-    )
+    """Add a keyframe on `layer_id` at `frame`.
+
+    Routes to the dedicated keyframe_add dispatcher (v0.4) — uses
+    `session.layers_editor().set_fixed_interpolation_or_key_if_need(...)`,
+    same path bake_range uses but for a single frame.
+    """
+    return _call("keyframe_add", layer_id=layer_id, frame=frame)
 
 
 @mcp.tool()
 def remove_keyframe(layer_id: str, frame: int) -> dict:
-    """Remove the keyframe at `frame` on `layer_id`."""
+    """Remove the keyframe at `frame` on `layer_id`.
+
+    Routes to the dedicated keyframe_remove dispatcher (v0.4) — uses
+    `session.layers_editor().unset_section(frame, layer_id)`, pattern
+    from bundled commands/animation_scripts/keyframe_reduction.py.
+    """
+    return _call("keyframe_remove", layer_id=layer_id, frame=frame)
+
+
+@mcp.tool()
+def set_controller_scale(
+    controller_id: str,
+    frame: int,
+    sx: float,
+    sy: float,
+    sz: float,
+    local: bool = True,
+) -> dict:
+    """Set a controller's Local Scale (or Scale) at the given frame.
+
+    Mirrors set_controller_position but writes to the Scale node.
+    Useful for stretchy IK or non-uniform-scale targets.
+    """
     return _call(
-        "keyframe_set",
-        controller_id=None,
+        "controller_scale_set",
+        controller_id=controller_id,
         frame=frame,
-        transform={"remove": True, "layer_id": layer_id},
+        scale=[sx, sy, sz],
+        local=local,
     )
 
 

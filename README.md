@@ -15,7 +15,7 @@ End-to-end demo verified: Claude proposes 8 spec §4 operations → user clicks 
 
 ```
 Claude ──MCP stdio──▶ poppet-mcp (host process, uvx-installable)
-                       │ FastMCP — 39 tools + 1 resource
+                       │ FastMCP — 40 tools + 1 resource
                        ▼
               %LOCALAPPDATA%\poppet-mcp\requests\<uuid>.json
                        ▼
@@ -89,7 +89,8 @@ Walks through the Cascadeur-side install, `settings.json` keys (Python.Path, Pyt
 | `get_keyframes(layer_id, frame_start, frame_end)` | [VERIFIED] | Layer-id matched via stringified UUID |
 | `set_controller_position(name, frame, x, y, z)` | [VERIFIED] | Works on both Joint (pelvis) and Box (pelvis_Box) controllers |
 | `set_controller_rotation(name, frame, qx, qy, qz, qw)` | [VERIFIED] | Quat -> XYZ Euler -> `Rotation.from_euler` (csc.math.Quaternion has no public ctor) |
-| `add_keyframe` / `remove_keyframe` | [PARTIAL] | Routed through keyframe_set transform dict — needs scene-context refinement |
+| `add_keyframe(layer_id, frame)` / `remove_keyframe(layer_id, frame)` | [WIRED v0.4] | `session.layers_editor().set_fixed_interpolation_or_key_if_need` / `unset_section`, patterns from `keyframe_reduction.py` + `reverse_animation.py` |
+| `set_controller_scale(controller_id, frame, sx, sy, sz)` | [WIRED v0.4] | Mirrors set_controller_position; writes to Local Scale / Scale node |
 | `run_autoposing` | [VERIFIED] | Wraps `AutoPosingTool.AutoPosing` action |
 | `run_autophysics(timeout_sec)` | [VERIFIED] | Wraps `AutoPhysicsTool.Snap to Auto Physics` + polls scene-state hash for convergence |
 | `read_telemetry(names, frames)` | [VERIFIED] | Returns position [x,y,z] + rotation_euler [rx,ry,rz] per controller per frame |
