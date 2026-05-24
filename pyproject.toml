@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "poppet-mcp"
-version = "0.1.0"
-description = "Model Context Protocol server for Cascadeur — drive AutoPosing, AutoPhysics, and keyframe authoring from Claude."
+version = "0.2.0"
+description = "Model Context Protocol server for Cascadeur — drive AutoPosing, AutoPhysics, keyframe authoring, scene I/O, and viewport capture from Claude."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
