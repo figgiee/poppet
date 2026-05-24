@@ -575,32 +575,82 @@ def _d_telemetry_read(params, scene):
 # FBX I/O
 # ============================================================================
 
-def _d_fbx_import(params, scene):
-    path = params.get("path")
-    if not isinstance(path, str) or not path:
-        raise ValueError("'path' must be a non-empty string")
+def _fbx_loader_and_settings(scope="scene"):
+    """Get the FbxSceneLoader's loader + return configured FbxSettings.
+
+    Pattern from Cascadeur's bundled quick_export and export_to_roblox scripts:
+        loader_tool = app.get_tools_manager().get_tool('FbxSceneLoader')
+        loader = loader_tool.get_fbx_loader(scene)
+    """
     import csc
-    am = csc.app.get_application().get_action_manager()
-    am.call_action("File.Import.Animation.Fbx...")
-    return {
-        "path": path,
-        "invoked": "File.Import.Animation.Fbx...",
-        "note": "Dialog-based action — pre-set default-FBX path with DefaultFbxSynchronization for headless.",
-    }
+    from csc import fbx
+    app = csc.app.get_application()
+    scene_pr = app.get_scene_manager().current_scene()
+    loader_tool = app.get_tools_manager().get_tool("FbxSceneLoader")
+    loader = loader_tool.get_fbx_loader(scene_pr)
+    settings = fbx.FbxSettings()
+    settings.mode = fbx.FbxSettingsMode.Binary
+    settings.up_axis = fbx.FbxSettingsAxis.Y
+    settings.bake_animation = True
+    settings.apply_euler_filter = True
+    loader.set_settings(settings)
+    return loader, settings
 
 
 def _d_fbx_export(params, scene):
+    """Export the entire scene to FBX without a dialog.
+
+    Path must be absolute. Uses csc.fbx.FbxLoader.export_all_objects which
+    is the canonical Cascadeur dialog-free entry point.
+    """
+    import os
     path = params.get("path")
     if not isinstance(path, str) or not path:
         raise ValueError("'path' must be a non-empty string")
-    import csc
-    am = csc.app.get_application().get_action_manager()
-    am.call_action("File.Export.Scene.Fbx...")
+    if not os.path.isabs(path):
+        raise ValueError("'path' must be absolute: {!r}".format(path))
+    # Make sure target dir exists (FbxLoader errors out if it doesn't).
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    except Exception:
+        pass
+
+    # Normalize path separators — FbxLoader is finicky on Windows.
+    normalized = path.replace("\\", "/")
+
+    loader, settings = _fbx_loader_and_settings()
+    loader.export_all_objects(normalized)
+
+    # Verify the file appeared (FbxLoader silently no-ops on some error paths).
+    exists = os.path.exists(normalized)
+    size = os.path.getsize(normalized) if exists else 0
     return {
-        "path": path,
-        "invoked": "File.Export.Scene.Fbx...",
-        "note": "Dialog-based action — pre-set default-FBX path with DefaultFbxSynchronization for headless.",
+        "path": normalized,
+        "exists": exists,
+        "size_bytes": size,
+        "settings": {"mode": "Binary", "up_axis": "Y",
+                     "bake_animation": True, "apply_euler_filter": True},
     }
+
+
+def _d_fbx_import(params, scene):
+    """Import an FBX file into the current scene without a dialog."""
+    import os
+    path = params.get("path")
+    if not isinstance(path, str) or not path:
+        raise ValueError("'path' must be a non-empty string")
+    if not os.path.exists(path):
+        raise ValueError("FBX file not found: {!r}".format(path))
+    normalized = path.replace("\\", "/")
+    loader, _ = _fbx_loader_and_settings()
+    # FbxLoader.import_scene loads the whole file as a new scene.
+    # For animation-only import into the current scene, use import_animation.
+    target = params.get("target", "scene")  # "scene" | "animation"
+    if target == "animation":
+        loader.import_animation(normalized)
+    else:
+        loader.import_scene(normalized)
+    return {"path": normalized, "target": target, "imported": True}
 
 
 # ============================================================================

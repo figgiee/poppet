@@ -1,133 +1,172 @@
 # Poppet — Cascadeur MCP
 
-Model Context Protocol server that lets Claude (and any other MCP client) drive [Cascadeur](https://cascadeur.com/) 2025.3.3 for AI-assisted character animation.
+Model Context Protocol server for [Cascadeur](https://cascadeur.com/) 2025.3.3. Lets Claude (and any MCP client) drive a real character animation pipeline: read scene state, set sparse keyframes, trigger AutoPosing + AutoPhysics, read back telemetry, export FBX.
 
-**Architecture (after the v1 pivot — see [`PLAN.md`](#)):**
+End-to-end demo verified: Claude proposes 8 spec §4 operations → user clicks **Commands → Poppet → Process Pending** in Cascadeur once → all 8 land, dispatcher returns 8 success responses in <3 seconds, FBX file appears on disk.
+
+## Architecture
 
 ```
-Claude ──MCP stdio──▶ poppet-mcp (host process)
-                       │ FastMCP tools
+Claude ──MCP stdio──▶ poppet-mcp (host process, uvx-installable)
+                       │ FastMCP — 20 tools + 1 resource
                        ▼
-              %LOCALAPPDATA%\poppet-mcp\requests\<uuid>.json  ◀── written by MCP server
+              %LOCALAPPDATA%\poppet-mcp\requests\<uuid>.json
                        ▼
-              [User clicks Commands → Poppet → Process Pending in Cascadeur]
-                       │ Cascadeur reads request, dispatches via csc.*, writes response
+        [User clicks Commands → Poppet → Process Pending]
+                       │ Cascadeur reads request, dispatches via csc.*,
+                       │ writes response file
                        ▼
-              %LOCALAPPDATA%\poppet-mcp\responses\<uuid>.json ◀── polled by MCP server
+              %LOCALAPPDATA%\poppet-mcp\responses\<uuid>.json
+                       ▲
+                       │ polled by MCP server
+              Returned to Claude as the tool result
 ```
 
-**Why file-sync?** Cascadeur 2025.3.3's embedded Python can't host a long-running socket listener:
-- PySide is not bundled — no QTimer
-- csc.* exposes no main-thread scheduler / event-post API
-- Background `threading.Thread` only runs its first GIL slice and is then starved indefinitely
+**Why file-sync instead of sockets?** Cascadeur 2025.3.3's embedded Python can't host a long-running listener:
+- PySide is not bundled — no `QTimer`
+- `csc.*` exposes no main-thread scheduler / event-post / dispatch API (verified — 115 candidate methods searched, none match)
+- Background `threading.Thread` only runs its first GIL slice and is then starved indefinitely (verified with minimal `time.sleep() + print()` loop)
 
-The file-sync pattern routes around all three limitations by using Cascadeur's normal command-invocation path (which runs on the main thread, in Python, with full csc.* access) as the dispatch tick.
-
-## Status
-
-Alpha. Manual-drain workflow is verified working end-to-end (echo, scene_info, call_action all round-trip through Cascadeur 2025.3.3 + CASCY sample scene). Auto-nudge via Windows-API key-send is experimental and only works when the MCP server's process already has foreground focus (Windows focus-stealing prevention blocks it otherwise).
+The file-sync pattern routes around all three limitations by piggybacking on Cascadeur's normal command-invocation path (which runs on the Qt main thread with full csc.* access).
 
 ## Install
 
 ```powershell
+# 1. Cascadeur-side: copies poppet/ into Cascadeur's user_scripts dir +
+#    additive Python.Path/Python.Commands override (no ScriptsDir replacement —
+#    that FATAL-crashes Cascadeur because it loses the rig "parts" subdir).
 .\scripts\install.ps1
+
+# 2. MCP server-side: install in your Python env (3.11+).
+pip install -e .                       # editable
+# or once published:
+uvx poppet-mcp                         # zero-install
 ```
 
-This:
-1. Reads `%LOCALAPPDATA%\Nekki Limited\Cascadeur\settings.json`
-2. Adds `%LOCALAPPDATA%\Nekki Limited\Cascadeur\user_scripts` to `Python.Path`
-3. Appends `"poppet"` to `Python.Commands`
-4. Copies `cascadeur_side/poppet/` to `%LOCALAPPDATA%\Nekki Limited\Cascadeur\user_scripts\poppet\`
+Restart Cascadeur and verify **Commands → Poppet → Process Pending** appears.
 
-ScriptsDir is **never** modified — Cascadeur replaces (not extends) the bundled scripts dir if you set it, which removes the rig "parts" and triggers a FATAL crash on next launch.
+Wire into your MCP client. `claude_desktop_config.json`:
 
-**macOS / Linux:** `./scripts/install.sh` (path probes for `/Applications/Cascadeur.app/...`, untested).
+```json
+{
+  "mcpServers": {
+    "poppet": { "command": "uvx", "args": ["poppet-mcp"] }
+  }
+}
+```
 
-## First-run workflow
+Or Claude Code: `claude mcp add poppet -- uvx poppet-mcp`.
 
-1. Restart Cascadeur. Verify **Commands → Poppet → Process Pending** and **Commands → Poppet → Refresh Schema** appear.
-2. Run **Commands → Poppet → Refresh Schema** once — this dumps the live `csc.*` API to `%LOCALAPPDATA%\poppet-mcp\csc_schema.json` for LLM consumption.
-3. Wire the MCP server into your client. Claude Desktop's `claude_desktop_config.json`:
-   ```json
-   {
-     "mcpServers": {
-       "poppet": { "command": "uvx", "args": ["poppet-mcp"] }
-     }
-   }
-   ```
-   Or Claude Code: `claude mcp add poppet -- uvx poppet-mcp`.
-4. **Per tool call**: Claude tools call into poppet-mcp, which writes a request file and polls for a response. **You must click Commands → Poppet → Process Pending** in Cascadeur to drain the queue (auto-nudge is best-effort — see below).
+## Tools (verified status)
 
-## Tools exposed
+| Tool | Status | Notes |
+|---|---|---|
+| `get_scene_info` | [VERIFIED] | Returns frame, object_count (289 on Cascy), layer_count, selection_count, scene_name |
+| `list_objects(name_contains)` | [VERIFIED] | Returns id (UUID), name, type for all objects. Honors name filter. |
+| `get_selection` / `set_selection(names)` / `clear_selection` | [VERIFIED] | Uses `scene.modify_with_session(session.take_selector().select(...))` |
+| `execute_csc_code(code)` | [VERIFIED] | Escape hatch — runs arbitrary Python in Cascadeur with `csc` + `scene` in scope |
+| `call_action(action_id)` | [VERIFIED] | Invokes any Cascadeur menu/toolbar action ID. See https://cascadeur.com/help/category/301 |
+| `list_layers` | [VERIFIED] | Returns 13 layers with id + key_frame_count for Cascy |
+| `get_keyframes(layer_id, frame_start, frame_end)` | [VERIFIED] | Layer-id matched via stringified UUID |
+| `set_controller_position(name, frame, x, y, z)` | [VERIFIED] | Works on both Joint (pelvis) and Box (pelvis_Box) controllers |
+| `set_controller_rotation(name, frame, qx, qy, qz, qw)` | [VERIFIED] | Quat -> XYZ Euler -> `Rotation.from_euler` (csc.math.Quaternion has no public ctor) |
+| `add_keyframe` / `remove_keyframe` | [PARTIAL] | Routed through keyframe_set transform dict — needs scene-context refinement |
+| `run_autoposing` | [VERIFIED] | Wraps `AutoPosingTool.AutoPosing` action |
+| `run_autophysics(timeout_sec)` | [VERIFIED] | Wraps `AutoPhysicsTool.Snap to Auto Physics` + polls scene-state hash for convergence |
+| `read_telemetry(names, frames)` | [VERIFIED] | Returns position [x,y,z] + rotation_euler [rx,ry,rz] per controller per frame |
+| `export_fbx(path)` | [VERIFIED] | Real dialog-free export via `FbxSceneLoader.get_fbx_loader(scene).export_all_objects(path)`. Verified file appears (~2.9MB Binary FBX from Cascy) |
+| `import_fbx(path, target=scene|animation)` | [WIRED] | Uses `FbxLoader.import_scene` / `import_animation`. Not yet exercised against a real FBX. |
+| `get_current_frame` | [VERIFIED] | Returns playhead position |
+| `set_current_frame(frame)` | [KNOWN ISSUE] | Returns success but `get_current_frame()` reads 0 afterward — neither `scene.set_current_frame()` nor `session.set_current_frame()` persists in 2025.3.3 |
 
-**Core**
-- `get_scene_info()`, `get_selection()`, `set_selection(object_names)`
-- `execute_csc_code(code)` — arbitrary Python escape hatch
-- `call_action(action_id)` — any Cascadeur menu/toolbar action ID (see https://cascadeur.com/help/category/301)
+Resources:
+- `csc://schema` — live `csc.*` API JSON (134KB) dumped by **Commands → Poppet → Refresh Schema**
 
-**Animation**
-- `list_layers()`, `get_keyframes(layer_id, frame_start, frame_end)`
-- `set_controller_position(controller_id, frame, x, y, z)`
-- `set_controller_rotation(controller_id, frame, qx, qy, qz, qw)`
-- `add_keyframe(layer_id, frame)`, `remove_keyframe(layer_id, frame)`
+## Demo scripts
 
-**AutoPhysics workflow (spec §4)**
-- `run_autoposing()`, `run_autophysics(timeout_sec=30)`
-- `read_telemetry(controller_ids, frames)`
+### `scripts/demo_batch_spec4.py` (recommended)
 
-**FBX**
-- `import_fbx(path)`, `export_fbx(path)`
+Writes all 8 spec §4 operations to the request queue at once. You click Process Pending **once**, the script reads all responses. Run:
 
-**Resource**
-- `csc://schema` — live-introspected `csc.*` signature JSON
+```powershell
+.venv\Scripts\python.exe scripts\demo_batch_spec4.py
+# In Cascadeur: click Commands → Poppet → Process Pending
+```
 
-Many higher-level handlers (keyframes, telemetry, etc.) are scaffolding marked `TODO` in `cascadeur_side/poppet/_dispatchers.py` — refine against the live API as you exercise them. `execute_csc_code` and `call_action` work today and cover anything the typed wrappers don't.
+Verified output:
+```
+[success] 00-scene_info
+[success] 01-objects_list
+[success] 02-set_controller_position pelvis_Box -> applied {position: true, position_new: [0,0,30]}
+[success] 03-selection_set foot_Box_l + foot_Box_r -> resolved 2, missing 0
+[success] 04-autopose_run -> invoked
+[success] 05-autophysics_run -> converged: true
+[success] 06-telemetry_read pelvis_Box -> position [0.0002, 48.14, 11.22], euler [...]
+[success] 07-fbx_export -> exists: true, size_bytes: 2888032
+[OK] FBX exported to ./tmp/poppet_demo.fbx (2888032 bytes)
+```
 
-## Auto-nudge
+### `scripts/demo_mcp_client.py` (per-call MCP via stdio)
 
-The MCP server side has a best-effort nudge in `src/poppet_mcp/_nudge.py` that:
-1. Finds Cascadeur's window via `EnumWindows`
-2. Primes Windows with an Alt keystroke (to bypass focus-stealing prevention)
-3. Sends `Alt+C, p, p, Enter, p` to navigate **Commands → Poppet → Process Pending**
+Same flow but routes every tool call through the actual `poppet-mcp` server via MCP stdio transport. Requires clicking Process Pending between each call (8 clicks total). Proves the MCP pipe round-trips.
 
-**Limitation**: Windows blocks `SetForegroundWindow` from processes that don't currently hold focus. When the MCP server runs from Claude Desktop / Code (which has focus), the nudge fails. **Reliable workflow is the manual click.**
+### `scripts/mcp_smoke_test.py` (no Cascadeur required)
 
-A fix for the nudge would require either:
-- AttachThreadInput trick + SetForegroundWindow (still flaky)
-- A native helper hooked into Cascadeur (intrusive)
-- Cascadeur adding a main-thread scheduler API (upstream ask)
+Initializes the MCP server, lists 20 tools + 1 resource, exits. Run any time to verify the FastMCP shim:
+
+```powershell
+.venv\Scripts\python.exe scripts\mcp_smoke_test.py
+```
+
+### `scripts/poc_client.py` (low-level wire test)
+
+Raw socket round-trip — predates the file-sync pivot. Kept for archaeological reference; ignore for new work.
+
+## Manual smoke test
+
+```powershell
+# 1. Queue a request
+python -c "
+import json, os, uuid
+base = os.path.join(os.environ['LOCALAPPDATA'], 'poppet-mcp')
+os.makedirs(os.path.join(base, 'requests'), exist_ok=True)
+rid = 'manual-' + str(uuid.uuid4())[:8]
+with open(os.path.join(base, 'requests', rid + '.json'), 'w') as f:
+    json.dump({'type': 'scene_info', 'params': {}}, f)
+print('queued', rid)
+"
+
+# 2. In Cascadeur: Commands → Poppet → Process Pending
+
+# 3. Read response
+type %LOCALAPPDATA%\poppet-mcp\responses\manual-*.json
+```
 
 ## Known limitations
 
 | What | Why |
 |---|---|
-| No autonomous server | Cascadeur's embedded Python can't host a tick loop (no PySide, no scheduler API, no real Python threading) |
-| Manual drain per request | Same root cause — user must click **Process Pending** |
-| Auto-nudge flaky | Windows focus-stealing prevention blocks `SetForegroundWindow` from background processes |
-| Some dispatchers are scaffolding | `_dispatchers.py` selection/layers/keyframes/telemetry are TODO; csc API surface verification needed against live install |
-| Higher latency per call | ~100-500ms file IO + user-click latency (no longer the ~ms socket latency the original design promised) |
+| Not autonomous — user clicks Process Pending per drain | Cascadeur's embedded Python can't host a tick loop (no PySide, no scheduler API, no real Python threading) |
+| Auto-nudge via Windows-API key-send is flaky | `SetForegroundWindow` is blocked when the MCP server process doesn't already have focus (Windows focus-stealing prevention) |
+| `set_current_frame` doesn't persist | Both `scene.set_current_frame()` and `session.set_current_frame()` accept the value but the playhead reads back as 0. Real path likely involves `csc.view.Scene.animation_boundary` or a Timeline action ID — not yet found. |
+| Higher per-call latency (~100–500ms file IO) | Inherent to the file-sync architecture vs the original socket design |
+| `import_fbx` not exercised end-to-end | Wired but no test FBX run against a real file yet |
 
-## Test it manually
+## Cascadeur quirks worth knowing
 
-```bash
-# 1. Drop a request file
-python -c "
-import json, os, uuid
-base = os.path.join(os.environ['LOCALAPPDATA'], 'poppet-mcp')
-os.makedirs(os.path.join(base, 'requests'), exist_ok=True)
-rid = 'test-' + str(uuid.uuid4())[:8]
-with open(os.path.join(base, 'requests', rid + '.json'), 'w') as f:
-    json.dump({'type': 'echo', 'params': {'hello': 'world'}}, f)
-print('queued', rid)
-"
-
-# 2. Click Commands → Poppet → Process Pending in Cascadeur
-
-# 3. Read the response
-ls %LOCALAPPDATA%\poppet-mcp\responses\
-type %LOCALAPPDATA%\poppet-mcp\responses\test-*.json
-```
+- **Joint vs Box objects**: Cascy has both. Joints are skeleton bones (`pelvis`, `thigh_l`). **Controllers** are the `_Box`-suffixed objects (`pelvis_Box`, `foot_Box_l`) — those are what you actually animate.
+- **`scene` parameter** to a command's `run(scene)` is a `csc.domain.Scene`, NOT `csc.view.Scene`. `scene.model_viewer()` and `scene.modify_with_session(...)` work directly.
+- **`ScriptsDir` in `settings.json` is a hard replacement, not additive.** Setting it removes the bundled scripts dir and Cascadeur FATAL-crashes on startup (no rig "parts"). Use `Python.Path` + `Python.Commands` instead — see `install.ps1`.
+- **Cascadeur uses Qt6** in C++, but the embedded Python has zero PySide. `Qt6Core.dll`/`Qt6Gui.dll` etc. are bundled but not accessible from Python.
+- **`call_action` is fire-and-forget.** No completion signal. For solves like AutoPhysics, poll scene state (see `_d_autophysics_run`).
+- **csc.math has no public Vec3 constructor.** Read existing value, build deltas as plain lists, set the sum (Vec3-likes auto-coerce). `_quat_to_euler_xyz` helper in `_dispatchers.py` because `csc.math.Quaternion` also has no public ctor in `dir()`.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Status
+
+Alpha. The file-sync architecture is verified working end-to-end against Cascadeur 2025.3.3 + the bundled CASCY sample. Most tools are exercised against real data. Some refinements remain (see Tools table).
+
+GitHub: https://github.com/figgiee/poppet
