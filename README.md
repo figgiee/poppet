@@ -68,6 +68,14 @@ Or Claude Code: `claude mcp add poppet -- uvx poppet-mcp`.
 
 See [docs/mcp_client_configs.md](docs/mcp_client_configs.md) for env-var configuration, local dev install snippets, and Cursor/Windsurf setup.
 
+After install, verify everything wired up correctly:
+
+```powershell
+python scripts/install_check.py
+```
+
+Walks through the Cascadeur-side install, `settings.json` keys (Python.Path, Python.Commands, Python.Events), the MCP server's importability, and the queue dirs — exits non-zero if anything's broken.
+
 ## Tools (verified status)
 
 | Tool | Status | Notes |
