@@ -2,7 +2,11 @@
 
 Common workflows for driving Cascadeur 2025.3.x from Claude (or any MCP client) via Poppet. See [README.md](README.md) for the full tool table and architecture.
 
-The pattern under every recipe: Claude calls a tool, Poppet writes a request file, you click **Commands → Poppet → Process Pending** in Cascadeur once to drain the queue, Poppet returns the result. Auto-nudge tries to do that click for you on Windows; treat it as best-effort.
+The pattern under every recipe: Claude calls a tool, Poppet writes a request file, Cascadeur drains the queue, Poppet returns the result. Three drain paths, in order of preference:
+
+1. **Auto-drain on focus (v0.2+).** If `poppet_events` is installed (it is, by default — see [README.md install section](README.md#install)), Cascadeur fires `scene_activated` whenever the window regains focus, which calls `process_pending.run(scene)` for you. Most workflows feel autonomous.
+2. **One-click drain dialog.** `Commands → Poppet → Status / Drain Dialog` shows pending count + a Drain Now button.
+3. **Manual drain.** `Commands → Poppet → Process Pending`. Always works.
 
 ## First contact
 
@@ -14,7 +18,7 @@ Five steps from zero to a working `get_scene_info` call.
 4. Wire the server into your MCP client. Claude Code: `claude mcp add poppet -- uvx poppet-mcp`. Claude Desktop: add a `poppet` entry to `claude_desktop_config.json` (snippet in the README).
 5. Ask Claude "what's in my Cascadeur scene?". Claude calls `get_scene_info`, Poppet queues the request, you click **Process Pending** once, you get back `{frame, object_count, layer_count, selection_count, scene_name}`. On Cascy that's `object_count: 289, layer_count: 13`.
 
-If step 5 hangs, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — most cases are "did you actually click Process Pending?" or "did auto-nudge silently fail?".
+If step 5 hangs, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — most cases are "did the focus-drain not fire?" (click the Cascadeur window once) or "did you actually click Process Pending?" if the events handler isn't installed.
 
 ## Cookbook
 
@@ -134,6 +138,63 @@ execute_csc_code(code="import inspect, csc.view; inspect.signature(csc.view.Scen
 ```
 
 Refresh after every Cascadeur update — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) "Schema is stale".
+
+### Work with layers (add, bake, undo)
+
+Layers are how Cascadeur stacks animation. v0.2 added direct create/delete, plus undo/redo and bulk range-bake.
+
+```text
+list_layers()
+add_layer(name="Poppet_Bake")
+# response includes new layer_id
+
+set_active_layer(layer_id="<id from add_layer>")
+# now subsequent set_controller_position calls land on Poppet_Bake
+
+# Procedural authoring you want to commit to discrete keys:
+bake_range(layer_id="<id>", frame_start=0, frame_end=120)
+# Drops a per-frame key on every controller across the range.
+
+# Roll back if you didn't like it:
+undo()
+
+# Or wipe the layer entirely:
+delete_layer(layer_id="<id>")
+```
+
+The undo + redo wrappers go through `Scene.Undo` / `Scene.Redo` so they participate in Cascadeur's normal undo stack — any manual edits the user made in the GUI get rolled back too.
+
+### Filter the selection by pattern
+
+```text
+# Select every controller (suffix match)
+selection_filter(pattern="_Box", mode="suffix")
+
+# Select both feet
+selection_filter(pattern="foot_Box_", mode="prefix")
+
+# Select via regex
+selection_filter(pattern=r"(hand|foot)_Box_[lr]", mode="regex")
+```
+
+Returns count + first 50 matched names. Useful before AutoPosing if you want a specific subset of controllers as anchors.
+
+### Save / load a scene + screenshot the viewport
+
+```text
+# Snapshot before a destructive experiment:
+save_scene(path="C:/work/snapshots/before.casc")
+
+# (… your experiment …)
+
+# Visual diff: take a screenshot before re-opening
+screenshot_viewport(path="C:/work/snapshots/after.png")
+
+# Roll back:
+load_scene(path="C:/work/snapshots/before.casc")
+```
+
+`save_scene` and `load_scene` try multiple DataSourceManager call shapes (Cascadeur API drifts between versions) and report which one worked in the `method` field.
 
 ## Common controllers in the bundled Cascy character
 
