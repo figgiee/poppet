@@ -301,14 +301,108 @@ def _d_keyframes_get(params, scene):
 
 
 def _d_keyframe_set(params, scene):
-    """Stub — needs DataEditor + per-controller mutation. Use exec_csc for now."""
+    """Set a controller's position or rotation at a frame.
+
+    Implementation derived from go_to_origin.py (scene.modify_update +
+    update.get_object_by_id(obj_id).root_group().node_deep("Position")
+    .set_value(val, frame) + scene_updater.run_update(actuals, frame)).
+
+    Params:
+      controller_id: str (object name OR uuid string)
+      frame: int
+      position: [x, y, z]  (optional — sets "Position" or "Local Position")
+      rotation_quat: [qx, qy, qz, qw]  (optional — sets "Rotation" or "Local Rotation")
+      local: bool (default True — use "Local Position"/"Local Rotation" instead of world)
+    """
+    import csc
+
+    controller = params.get("controller_id")
+    frame = int(params["frame"])
+    position = params.get("position")
+    rotation_quat = params.get("rotation_quat")
+    use_local = params.get("local", True)
+
+    if not controller:
+        raise ValueError("controller_id is required")
+    if position is None and rotation_quat is None:
+        raise ValueError("at least one of position / rotation_quat is required")
+
+    # Resolve controller name -> ObjectId. Allow either name or stringified id.
+    obj_id = _find_obj_by_name(scene, controller)
+    if obj_id is None:
+        # Try matching by id string.
+        mv = scene.model_viewer()
+        for oid in mv.get_objects():
+            if _id_str(oid) == controller:
+                obj_id = oid
+                break
+    if obj_id is None:
+        raise ValueError("controller not found by name or id: {!r}".format(controller))
+
+    pos_node_name = "Local Position" if use_local else "Position"
+    rot_node_name = "Local Rotation" if use_local else "Rotation"
+
+    actuals_acc = []
+    applied = {"position": False, "rotation": False, "frame": frame}
+
+    def mod(model, update, scene_updater):
+        actuals = set()
+        try:
+            node = update.get_object_by_id(obj_id).root_group()
+        except Exception as e:
+            applied["error"] = "get_object_by_id failed: {}".format(e)
+            return
+
+        if position is not None:
+            try:
+                pos_attr = node.node_deep(pos_node_name)
+                if pos_attr is None:
+                    applied["position_error"] = "node {!r} not on {!r}".format(pos_node_name, controller)
+                else:
+                    current = pos_attr.value(frame)
+                    if current is not None:
+                        # Type-preserving: delta from current keeps Vec3-like type.
+                        delta = [float(position[0]) - float(current[0]),
+                                 float(position[1]) - float(current[1]),
+                                 float(position[2]) - float(current[2])]
+                        new_pos = current + delta
+                    else:
+                        new_pos = [float(position[0]), float(position[1]), float(position[2])]
+                    pos_attr.set_value(new_pos, frame)
+                    actuals.add(pos_attr.data_id())
+                    applied["position"] = True
+                    applied["position_new"] = _vec_to_list(new_pos)
+            except Exception as e:
+                applied["position_error"] = "{}: {}".format(type(e).__name__, e)
+
+        if rotation_quat is not None:
+            try:
+                rot_attr = node.node_deep(rot_node_name)
+                if rot_attr is None:
+                    applied["rotation_error"] = "node {!r} not on {!r}".format(rot_node_name, controller)
+                else:
+                    qx, qy, qz, qw = (float(x) for x in rotation_quat)
+                    euler = _quat_to_euler_xyz(qx, qy, qz, qw)
+                    rot_val = csc.math.Rotation.from_euler(euler)
+                    rot_attr.set_value(rot_val, frame)
+                    actuals.add(rot_attr.data_id())
+                    applied["rotation"] = True
+            except Exception as e:
+                applied["rotation_error"] = "{}: {}".format(type(e).__name__, e)
+
+        actuals_acc.extend(actuals)
+        if actuals:
+            try:
+                scene_updater.run_update(actuals, frame)
+            except Exception as e:
+                applied["run_update_error"] = "{}: {}".format(type(e).__name__, e)
+
+    scene.modify_update("Poppet: set keyframe", mod)
     return {
-        "applied": False,
-        "note": (
-            "Not yet wired. Use execute_csc_code with a session-based mutation that "
-            "calls model.data_editor().set_data_value(data_id, frame, value) — see "
-            "cascadeur bundled commands like restore_values.py for the pattern."
-        ),
+        "controller": controller,
+        "obj_id": _id_str(obj_id),
+        "applied": applied,
+        "attrs_updated": len(actuals_acc),
     }
 
 
@@ -379,22 +473,101 @@ def _scene_state_fingerprint(scene):
 
 
 def _d_telemetry_read(params, scene):
-    """Read controller transforms at given frames.
+    """Read controller position+rotation at given frames using csc.update.
 
-    Stub for now — proper implementation needs csc.update / pycsc.TransformUpdate
-    to read global world transforms. Pattern is in go_to_default_pose.py.
+    Implementation derived from go_to_origin.py (update.get_object_by_id(...)
+    .root_group().node_deep("Local Position").value(frame)).
+
+    Params:
+      controller_ids: list[str]  (object names or stringified ObjectIds)
+      frames: list[int]
+      local: bool (default True — read "Local Position"/"Local Rotation")
+
+    Returns:
+      telemetry[controller_name][frame] = {position: [x,y,z], rotation: [qx,qy,qz,qw]}
     """
     controller_ids = params.get("controller_ids", [])
     frames = params.get("frames", [])
+    use_local = params.get("local", True)
+    if not isinstance(controller_ids, list) or not isinstance(frames, list):
+        raise ValueError("controller_ids and frames must be lists")
+
+    # Resolve names/ids → ObjectId.
+    resolved = []  # list of (name_or_id_str, ObjectId or None)
+    mv = scene.model_viewer()
+    name_index = {}
+    id_index = {}
+    for oid in mv.get_objects():
+        try:
+            name_index[mv.get_object_name(oid)] = oid
+        except Exception:
+            pass
+        id_index[_id_str(oid)] = oid
+
+    for c in controller_ids:
+        oid = name_index.get(c) or id_index.get(c)
+        resolved.append((c, oid))
+
+    pos_node_name = "Local Position" if use_local else "Position"
+    rot_node_name = "Local Rotation" if use_local else "Rotation"
+
+    telemetry = {}
+    missing = []
+
+    def mod(model, update, scene_updater):
+        for label, oid in resolved:
+            if oid is None:
+                missing.append(label)
+                continue
+            try:
+                node = update.get_object_by_id(oid).root_group()
+            except Exception as e:
+                telemetry[label] = {"error": "get_object_by_id: {}".format(e)}
+                continue
+            pos_attr = node.node_deep(pos_node_name)
+            rot_attr = node.node_deep(rot_node_name)
+            per_frame = {}
+            for f in frames:
+                entry = {}
+                if pos_attr is not None:
+                    try:
+                        v = pos_attr.value(int(f))
+                        entry["position"] = _vec_to_list(v)
+                        if entry["position"] is None:
+                            entry["position_repr"] = _safe_repr(v)
+                    except Exception as e:
+                        entry["position_error"] = str(e)
+                if rot_attr is not None:
+                    try:
+                        r = rot_attr.value(int(f))
+                        try:
+                            q = r.to_quaternion()
+                            entry["rotation"] = [
+                                float(getattr(q, "x", 0)),
+                                float(getattr(q, "y", 0)),
+                                float(getattr(q, "z", 0)),
+                                float(getattr(q, "w", 1)),
+                            ]
+                        except Exception:
+                            # Fallback: convert via euler
+                            try:
+                                e_ang = r.to_euler_angles()
+                                entry["rotation_euler"] = _vec_to_list(e_ang) or [
+                                    float(e_ang[0]), float(e_ang[1]), float(e_ang[2])
+                                ]
+                            except Exception:
+                                entry["rotation_repr"] = _safe_repr(r)
+                    except Exception as e:
+                        entry["rotation_error"] = str(e)
+                per_frame[str(f)] = entry
+            telemetry[label] = per_frame
+
+    scene.modify_update("Poppet: read telemetry", mod)
     return {
-        "controller_ids": controller_ids,
+        "telemetry": telemetry,
         "frames": frames,
-        "telemetry": {},
-        "note": (
-            "Not yet wired. Use execute_csc_code with pycsc.TransformUpdate(obj_id, py_scene) "
-            "and node.get_global_orto_transform() to read world transforms — see "
-            "go_to_default_pose.py for the pattern."
-        ),
+        "missing": missing,
+        "node_names": [pos_node_name, rot_node_name],
     }
 
 
@@ -481,6 +654,47 @@ def _d_schema_get(params, scene):
 def _safe_call(fn):
     try:
         return fn()
+    except Exception:
+        return None
+
+
+def _quat_to_euler_xyz(qx, qy, qz, qw):
+    """Convert a quaternion (x,y,z,w) to XYZ Euler angles (radians).
+
+    Standard pitch-roll-yaw from quaternion, math via stdlib only.
+    Returns [rx, ry, rz].
+    """
+    import math as _m
+    # roll (X-axis rotation)
+    sinr_cosp = 2.0 * (qw * qx + qy * qz)
+    cosr_cosp = 1.0 - 2.0 * (qx * qx + qy * qy)
+    rx = _m.atan2(sinr_cosp, cosr_cosp)
+    # pitch (Y-axis rotation)
+    sinp = 2.0 * (qw * qy - qz * qx)
+    if abs(sinp) >= 1.0:
+        ry = _m.copysign(_m.pi / 2.0, sinp)
+    else:
+        ry = _m.asin(sinp)
+    # yaw (Z-axis rotation)
+    siny_cosp = 2.0 * (qw * qz + qx * qy)
+    cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+    rz = _m.atan2(siny_cosp, cosy_cosp)
+    return [rx, ry, rz]
+
+
+def _vec_to_list(v):
+    """Coerce a csc vec-like (Vec3f, numpy array, list, tuple) into [x, y, z]."""
+    if v is None:
+        return None
+    # Try attribute access first (csc Vec types expose .x/.y/.z)
+    if all(hasattr(v, c) for c in "xyz"):
+        try:
+            return [float(v.x), float(v.y), float(v.z)]
+        except Exception:
+            pass
+    # Try indexed access (lists, tuples, numpy)
+    try:
+        return [float(v[0]), float(v[1]), float(v[2])]
     except Exception:
         return None
 
