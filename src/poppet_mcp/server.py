@@ -390,6 +390,31 @@ def redo() -> dict:
 
 
 @mcp.tool()
+def selection_filter(pattern: str, mode: str = "contains") -> dict:
+    """Replace the selection with objects whose name matches `pattern`.
+
+    mode is one of: contains (default), prefix, suffix, regex.
+    Useful for batch ops — e.g. `selection_filter("_Box", "suffix")` selects
+    every controller, `selection_filter("foot_Box_", "prefix")` selects both
+    feet, etc. Returns the count + first 50 matched names.
+    """
+    return _call("selection_filter", pattern=pattern, mode=mode)
+
+
+@mcp.tool()
+def get_active_layer() -> dict:
+    """Return id+name of the currently-active editing layer."""
+    return _call("active_layer_get")
+
+
+@mcp.tool()
+def set_active_layer(layer_id: str) -> dict:
+    """Make a layer the active editing target (subsequent keyframe writes
+    land on it). Pass an id from list_layers."""
+    return _call("active_layer_set", layer_id=layer_id)
+
+
+@mcp.tool()
 def bake_range(layer_id: str, frame_start: int, frame_end: int) -> dict:
     """Bake per-frame keyframes across [frame_start, frame_end] on a layer.
 

@@ -1340,6 +1340,129 @@ def _d_redo(params, scene):
     return {"invoked": "Scene.Redo"}
 
 
+def _d_selection_filter(params, scene):
+    """Replace selection with objects whose names match a pattern.
+
+    Modes:
+      contains: name contains substring (default)
+      prefix:   name starts with substring
+      suffix:   name ends with substring
+      regex:    name fully matches a regex
+    """
+    import re as _re
+
+    import csc
+
+    pattern = params.get("pattern", "")
+    mode = params.get("mode", "contains")
+    if not pattern:
+        raise ValueError("'pattern' is required")
+    if mode not in ("contains", "prefix", "suffix", "regex"):
+        raise ValueError(f"'mode' must be contains/prefix/suffix/regex, got {mode!r}")
+
+    matched_ids = []
+    matched_names = []
+    mv = scene.model_viewer()
+    rx = _re.compile(pattern) if mode == "regex" else None
+    for oid in mv.get_objects():
+        try:
+            name = mv.get_object_name(oid) or ""
+        except Exception:
+            continue
+        keep = False
+        if mode == "contains":
+            keep = pattern in name
+        elif mode == "prefix":
+            keep = name.startswith(pattern)
+        elif mode == "suffix":
+            keep = name.endswith(pattern)
+        elif mode == "regex":
+            keep = rx is not None and rx.fullmatch(name) is not None
+        if keep:
+            matched_ids.append(oid)
+            matched_names.append(name)
+
+    focus = matched_ids[0] if matched_ids else csc.model.ObjectId.null()
+
+    def mod(model, update, sc, session):
+        session.take_selector().select(set(matched_ids), focus)
+
+    scene.modify_with_session("Poppet: selection_filter", mod)
+    return {
+        "pattern": pattern,
+        "mode": mode,
+        "matched_count": len(matched_ids),
+        "matched_names": matched_names[:50],  # cap for transport
+    }
+
+
+def _d_active_layer_get(params, scene):
+    """Return the currently-active editing layer (id + name)."""
+    lv = scene.layers_viewer()
+    # Try several access paths (API drift).
+    out = {"active_layer_id": None, "active_layer_name": None}
+    for getter in ("current_layer_id", "active_layer_id", "selected_layer_id"):
+        try:
+            fn = getattr(lv, getter, None)
+            if fn is None:
+                continue
+            lid = fn()
+            if lid is None:
+                continue
+            out["active_layer_id"] = _id_str(lid)
+            try:
+                out["active_layer_name"] = lv.layer(lid).name()
+            except Exception:
+                pass
+            out["method"] = getter
+            return out
+        except Exception:
+            continue
+    out["error"] = "no current/active/selected_layer_id method on layers_viewer"
+    return out
+
+
+def _d_active_layer_set(params, scene):
+    """Switch the editing-active layer."""
+    layer_id_str = params.get("layer_id")
+    if not layer_id_str:
+        raise ValueError("'layer_id' is required")
+    lid, _ = _resolve_layer(scene, layer_id_str)
+    if lid is None:
+        raise ValueError(f"layer_id not found: {layer_id_str!r}")
+
+    err = {"value": None}
+    method_used = {"value": None}
+
+    def mod(model, update, sc, session):
+        try:
+            le = session.layers_editor()
+        except Exception as e:
+            err["value"] = f"layers_editor: {e}"
+            return
+        for setter in ("set_current_layer", "set_active_layer", "set_selected_layer"):
+            try:
+                fn = getattr(le, setter, None)
+                if fn is None:
+                    continue
+                fn(lid)
+                method_used["value"] = setter
+                return
+            except Exception as e:
+                err["value"] = f"{setter}: {e}"
+
+    scene.modify_with_session("Poppet: set active layer", mod)
+    out = {"layer_id": layer_id_str}
+    if method_used["value"]:
+        out["method"] = method_used["value"]
+        out["set"] = True
+    else:
+        out["set"] = False
+        if err["value"]:
+            out["error"] = err["value"]
+    return out
+
+
 def _d_bake_range(params, scene):
     """Bake keyframes across a frame range on the given layer.
 
@@ -1503,4 +1626,7 @@ _HANDLERS = {
     "undo": _d_undo,
     "redo": _d_redo,
     "bake_range": _d_bake_range,
+    "selection_filter": _d_selection_filter,
+    "active_layer_get": _d_active_layer_get,
+    "active_layer_set": _d_active_layer_set,
 }

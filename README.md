@@ -10,7 +10,7 @@ End-to-end demo verified: Claude proposes 8 spec §4 operations → user clicks 
 
 ```
 Claude ──MCP stdio──▶ poppet-mcp (host process, uvx-installable)
-                       │ FastMCP — 36 tools + 1 resource
+                       │ FastMCP — 39 tools + 1 resource
                        ▼
               %LOCALAPPDATA%\poppet-mcp\requests\<uuid>.json
                        ▼
@@ -93,6 +93,8 @@ Or Claude Code: `claude mcp add poppet -- uvx poppet-mcp`.
 | `add_layer(name, parent_id?)` / `delete_layer(layer_id)` | [WIRED v0.2] | `session.layers_editor().create_layer/delete_layer`, pattern from `common/layers_operation.py` |
 | `undo()` / `redo()` | [WIRED v0.2] | `Scene.Undo` / `Scene.Redo` action wrappers |
 | `bake_range(layer_id, frame_start, frame_end)` | [WIRED v0.2] | Bakes per-frame keys via `set_fixed_interpolation_or_key_if_need`, pattern from `commands/animation_scripts/reverse_animation.py` |
+| `selection_filter(pattern, mode)` | [WIRED v0.3] | Filters by `contains` / `prefix` / `suffix` / `regex` and replaces selection |
+| `get_active_layer` / `set_active_layer(layer_id)` | [WIRED v0.3] | Tries multiple `current/active/selected_layer_id` getters/setters |
 
 Resources:
 - `csc://schema` — live `csc.*` API JSON (134KB) dumped by **Commands → Poppet → Refresh Schema**

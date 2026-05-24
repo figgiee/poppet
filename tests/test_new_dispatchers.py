@@ -278,6 +278,10 @@ def test_frame_set_reports_unpersisted_when_get_disagrees(fake_scene):
         "undo",
         "redo",
         "bake_range",
+        # v0.3 round 2
+        "selection_filter",
+        "active_layer_get",
+        "active_layer_set",
     ],
 )
 def test_new_handler_registered(name):
@@ -285,10 +289,10 @@ def test_new_handler_registered(name):
     assert callable(_dispatchers._HANDLERS[name])
 
 
-def test_handler_count_at_least_35():
-    # v0.1 had 19, v0.2 adds 16 (11 main + 5 layer/undo) — should be at least 35.
-    assert len(_dispatchers._HANDLERS) >= 35, (
-        f"expected 35+ handlers, got {len(_dispatchers._HANDLERS)}: "
+def test_handler_count_at_least_38():
+    # v0.1 had 19, v0.2 adds 16 (11 main + 5 layer/undo), v0.3 adds 3 more.
+    assert len(_dispatchers._HANDLERS) >= 38, (
+        f"expected 38+ handlers, got {len(_dispatchers._HANDLERS)}: "
         f"{sorted(_dispatchers._HANDLERS)}"
     )
 
@@ -351,6 +355,91 @@ def test_bake_range_404s_unknown_layer(fake_scene):
         _dispatchers._d_bake_range(
             {"layer_id": "ghost", "frame_start": 0, "frame_end": 5}, fake_scene
         )
+
+
+# ---------------------------------------------------------------------------
+# selection_filter
+# ---------------------------------------------------------------------------
+
+
+def test_selection_filter_requires_pattern(fake_scene):
+    with pytest.raises(ValueError, match="pattern"):
+        _dispatchers._d_selection_filter({}, fake_scene)
+
+
+def test_selection_filter_rejects_bad_mode(fake_scene):
+    with pytest.raises(ValueError, match="mode"):
+        _dispatchers._d_selection_filter({"pattern": "foo", "mode": "bogus"}, fake_scene)
+
+
+def test_selection_filter_contains(fake_scene):
+    scene = _scene_with_objects(
+        ("o1", "pelvis_Box", "Box"),
+        ("o2", "foot_Box_l", "Box"),
+        ("o3", "head", "Joint"),
+        ("o4", "head_Box", "Box"),
+    )
+    _run_mod_immediately(scene, "modify_with_session")
+    out = _dispatchers._d_selection_filter({"pattern": "_Box"}, scene)
+    assert out["matched_count"] == 3
+    assert set(out["matched_names"]) == {"pelvis_Box", "foot_Box_l", "head_Box"}
+
+
+def test_selection_filter_prefix(fake_scene):
+    scene = _scene_with_objects(
+        ("o1", "foot_Box_l", "Box"),
+        ("o2", "foot_Box_r", "Box"),
+        ("o3", "pelvis_Box", "Box"),
+    )
+    _run_mod_immediately(scene, "modify_with_session")
+    out = _dispatchers._d_selection_filter({"pattern": "foot_", "mode": "prefix"}, scene)
+    assert out["matched_count"] == 2
+    assert set(out["matched_names"]) == {"foot_Box_l", "foot_Box_r"}
+
+
+def test_selection_filter_suffix(fake_scene):
+    scene = _scene_with_objects(
+        ("o1", "foot_Box_l", "Box"),
+        ("o2", "foot_Box_r", "Box"),
+        ("o3", "pelvis_Box", "Box"),
+    )
+    _run_mod_immediately(scene, "modify_with_session")
+    out = _dispatchers._d_selection_filter({"pattern": "_l", "mode": "suffix"}, scene)
+    assert out["matched_count"] == 1
+    assert out["matched_names"] == ["foot_Box_l"]
+
+
+def test_selection_filter_regex(fake_scene):
+    scene = _scene_with_objects(
+        ("o1", "foot_Box_l", "Box"),
+        ("o2", "foot_Box_r", "Box"),
+        ("o3", "head_Box", "Box"),
+    )
+    _run_mod_immediately(scene, "modify_with_session")
+    out = _dispatchers._d_selection_filter({"pattern": r"foot_Box_[lr]", "mode": "regex"}, scene)
+    assert out["matched_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# active_layer get/set
+# ---------------------------------------------------------------------------
+
+
+def test_active_layer_set_requires_layer_id(fake_scene):
+    with pytest.raises(ValueError, match="layer_id"):
+        _dispatchers._d_active_layer_set({}, fake_scene)
+
+
+def test_active_layer_set_404s_unknown(fake_scene):
+    with pytest.raises(ValueError, match="not found"):
+        _dispatchers._d_active_layer_set({"layer_id": "ghost"}, fake_scene)
+
+
+def test_active_layer_get_returns_structure(fake_scene):
+    out = _dispatchers._d_active_layer_get({}, fake_scene)
+    # Structure check: always has these keys even if no resolve method exists.
+    assert "active_layer_id" in out
+    assert "active_layer_name" in out
 
 
 # os import used above for path joins in fixtures

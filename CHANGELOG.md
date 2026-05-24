@@ -4,6 +4,33 @@ All notable changes to Poppet — Cascadeur MCP. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per
 [SemVer](https://semver.org/).
 
+## [0.3.0] — 2026-05-24
+
+### Added
+
+- **`selection_filter(pattern, mode)`** — replace the current selection with
+  every object whose name matches `pattern`. Modes: `contains` (default),
+  `prefix`, `suffix`, `regex`. Returns count + first 50 matched names.
+- **`get_active_layer()` / `set_active_layer(layer_id)`** — read and switch
+  the currently-active editing layer. Tries multiple API method names
+  (`current_layer_id`, `active_layer_id`, `selected_layer_id`,
+  `set_current_layer`, `set_active_layer`, `set_selected_layer`) and
+  reports which one resolved.
+- **`scripts/demo_v03_layer_ops.py`** — 2-stage batch demo of layer
+  add/delete/undo/redo/bake_range, with the second stage parameterized off
+  the first stage's responses (so it doesn't need a hand-typed layer id).
+- **`scripts/demo_import_fbx_roundtrip.py`** — export → re-import test
+  with configurable `--target {scene,animation}`.
+- USAGE.md cookbook sections for layer ops, undo, selection filtering,
+  scene snapshots, and viewport screenshots.
+
+### Changed
+
+- MCP tool count: **36 → 39**.
+- USAGE.md "First contact" updated to describe auto-drain on focus + drain
+  dialog as the preferred drain paths (manual Process Pending now last
+  resort, not the default).
+
 ## [0.2.0] — 2026-05-24
 
 ### Added

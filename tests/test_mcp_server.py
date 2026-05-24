@@ -38,16 +38,16 @@ def stub_conn(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_at_least_35_tools_registered():
-    """v0.2 ships 36 tools (31 from main expansion + 5 layer/undo). Future
-    minors must NOT regress below 35.
+def test_at_least_38_tools_registered():
+    """v0.3 ships 39 tools (36 from v0.2 + 3 layer/selection adds). Future
+    minors must NOT regress below 38.
     """
     import asyncio
 
     from poppet_mcp.server import mcp
 
     tools = asyncio.run(mcp.list_tools())
-    assert len(tools) >= 35, f"only {len(tools)} tools: {[t.name for t in tools]}"
+    assert len(tools) >= 38, f"only {len(tools)} tools: {[t.name for t in tools]}"
 
 
 def test_csc_schema_resource_registered():
@@ -201,6 +201,10 @@ def test_screenshot_viewport_forwards_path(stub_conn):
             "bake_range",
             {"layer_id": "abc", "frame_start": 0, "frame_end": 30},
         ),
+        # v0.3 round 2
+        ("selection_filter", "selection_filter", {"pattern": "_Box", "mode": "suffix"}),
+        ("get_active_layer", "active_layer_get", {}),
+        ("set_active_layer", "active_layer_set", {"layer_id": "abc"}),
     ],
 )
 def test_simple_pass_through_tools(stub_conn, tool_attr, command, kwargs):
