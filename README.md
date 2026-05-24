@@ -1,5 +1,10 @@
 # Poppet — Cascadeur MCP
 
+[![CI](https://github.com/figgiee/poppet/actions/workflows/ci.yml/badge.svg)](https://github.com/figgiee/poppet/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Cascadeur 2025.3.3](https://img.shields.io/badge/Cascadeur-2025.3.3-orange.svg)](https://cascadeur.com/)
+
 Model Context Protocol server for [Cascadeur](https://cascadeur.com/) 2025.3.3. Lets Claude (and any MCP client) drive a real character animation pipeline: read scene state, set sparse keyframes, trigger AutoPosing + AutoPhysics, read back telemetry, save/load scenes, screenshot the viewport, manage layers + object hierarchy, export FBX.
 
 End-to-end demo verified: Claude proposes 8 spec §4 operations → user clicks **Commands → Poppet → Process Pending** in Cascadeur once → all 8 land, dispatcher returns 8 success responses in <3 seconds, FBX file appears on disk.
@@ -60,6 +65,8 @@ Wire into your MCP client. `claude_desktop_config.json`:
 ```
 
 Or Claude Code: `claude mcp add poppet -- uvx poppet-mcp`.
+
+See [docs/mcp_client_configs.md](docs/mcp_client_configs.md) for env-var configuration, local dev install snippets, and Cursor/Windsurf setup.
 
 ## Tools (verified status)
 
