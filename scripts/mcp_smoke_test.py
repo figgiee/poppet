@@ -50,6 +50,16 @@ async def run() -> int:
             except Exception as e:
                 print(f"\nlist_resources error (may be normal): {e}")
 
+            # Optional end-to-end Cascadeur tool call — set POPPET_LIVE=1 to enable.
+            # Requires Cascadeur running + user clicking Process Pending within the timeout.
+            if os.environ.get("POPPET_LIVE") == "1":
+                print("\n--- live tool call: get_scene_info ---")
+                print(">>> Click Commands -> Poppet -> Process Pending in Cascadeur <<<")
+                r = await session.call_tool("get_scene_info", {})
+                text = r.content[0].text if r.content else str(r)
+                print(text[:600])
+                print("\n[OK] live MCP -> Cascadeur round-trip verified.")
+
     print("\n[OK] MCP smoke test passed.")
     return 0
 
