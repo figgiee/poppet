@@ -180,6 +180,48 @@ def remove_keyframe(layer_id: str, frame: int) -> dict:
 
 
 @mcp.tool()
+def selection_extend(object_names: list[str]) -> dict:
+    """Add object names to the current selection (set union).
+
+    Returns added names, missing names, and the new selection_count.
+    """
+    return _call("selection_extend", object_names=object_names)
+
+
+@mcp.tool()
+def selection_subtract(object_names: list[str]) -> dict:
+    """Remove object names from the current selection (set difference).
+
+    Returns removed names, missing names, and the new selection_count.
+    """
+    return _call("selection_subtract", object_names=object_names)
+
+
+@mcp.tool()
+def read_telemetry_range(
+    controller_ids: list[str],
+    frame_start: int,
+    frame_end: int,
+    step: int = 1,
+    local: bool = True,
+) -> dict:
+    """Read controller transforms across a frame range (inclusive endpoints).
+
+    More efficient than calling read_telemetry once per frame because the
+    update graph is walked a single time. `step` lets you sample every Nth
+    frame for sparse reads.
+    """
+    return _call(
+        "telemetry_read_range",
+        controller_ids=controller_ids,
+        frame_start=frame_start,
+        frame_end=frame_end,
+        step=step,
+        local=local,
+    )
+
+
+@mcp.tool()
 def set_controller_scale(
     controller_id: str,
     frame: int,

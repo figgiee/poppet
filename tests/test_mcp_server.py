@@ -38,17 +38,16 @@ def stub_conn(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_at_least_40_tools_registered():
-    """v0.4 ships 40 tools (39 from v0.3 + set_controller_scale; add/remove
-    keyframe were already counted in v0.1). Future minors must NOT regress
-    below 40.
+def test_at_least_43_tools_registered():
+    """v0.5 ships 43 tools (40 from v0.4 + selection_extend/subtract +
+    read_telemetry_range). Future minors must NOT regress below 43.
     """
     import asyncio
 
     from poppet_mcp.server import mcp
 
     tools = asyncio.run(mcp.list_tools())
-    assert len(tools) >= 40, f"only {len(tools)} tools: {[t.name for t in tools]}"
+    assert len(tools) >= 43, f"only {len(tools)} tools: {[t.name for t in tools]}"
 
 
 def test_csc_schema_resource_registered():

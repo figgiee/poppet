@@ -286,6 +286,10 @@ def test_frame_set_reports_unpersisted_when_get_disagrees(fake_scene):
         "keyframe_add",
         "keyframe_remove",
         "controller_scale_set",
+        # v0.5
+        "selection_extend",
+        "selection_subtract",
+        "telemetry_read_range",
     ],
 )
 def test_new_handler_registered(name):
@@ -293,10 +297,10 @@ def test_new_handler_registered(name):
     assert callable(_dispatchers._HANDLERS[name])
 
 
-def test_handler_count_at_least_41():
-    # v0.1 had 19, v0.2 +16, v0.3 +3, v0.4 +3 = 41.
-    assert len(_dispatchers._HANDLERS) >= 41, (
-        f"expected 41+ handlers, got {len(_dispatchers._HANDLERS)}: "
+def test_handler_count_at_least_44():
+    # v0.1=19, v0.2+=16, v0.3+=3, v0.4+=3, v0.5+=3 = 44.
+    assert len(_dispatchers._HANDLERS) >= 44, (
+        f"expected 44+ handlers, got {len(_dispatchers._HANDLERS)}: "
         f"{sorted(_dispatchers._HANDLERS)}"
     )
 
@@ -489,6 +493,69 @@ def test_controller_scale_set_404s_unknown_controller(fake_scene):
             {"controller_id": "nope", "frame": 0, "scale": [1.0, 1.0, 1.0]},
             fake_scene,
         )
+
+
+# ---------------------------------------------------------------------------
+# selection_extend / selection_subtract / telemetry_read_range (v0.5)
+# ---------------------------------------------------------------------------
+
+
+def test_selection_extend_requires_list(fake_scene):
+    with pytest.raises(ValueError, match="object_names"):
+        _dispatchers._d_selection_extend({"object_names": "not a list"}, fake_scene)
+
+
+def test_selection_extend_reports_missing(fake_scene):
+    scene = _scene_with_objects(("o1", "pelvis_Box", "Box"))
+    _run_mod_immediately(scene, "modify_with_session")
+    out = _dispatchers._d_selection_extend({"object_names": ["pelvis_Box", "ghost_Box"]}, scene)
+    assert "pelvis_Box" in out["added"]
+    assert "ghost_Box" in out["missing"]
+
+
+def test_selection_subtract_requires_list(fake_scene):
+    with pytest.raises(ValueError, match="object_names"):
+        _dispatchers._d_selection_subtract({"object_names": 123}, fake_scene)
+
+
+def test_selection_subtract_reports_missing(fake_scene):
+    scene = _scene_with_objects(("o1", "pelvis_Box", "Box"))
+    _run_mod_immediately(scene, "modify_with_session")
+    out = _dispatchers._d_selection_subtract({"object_names": ["pelvis_Box", "ghost_Box"]}, scene)
+    assert "pelvis_Box" in out["removed"]
+    assert "ghost_Box" in out["missing"]
+
+
+def test_telemetry_read_range_requires_controllers(fake_scene):
+    with pytest.raises(ValueError, match="controller_ids"):
+        _dispatchers._d_telemetry_read_range({"frame_start": 0, "frame_end": 10}, fake_scene)
+
+
+def test_telemetry_read_range_rejects_bad_step(fake_scene):
+    with pytest.raises(ValueError, match="step"):
+        _dispatchers._d_telemetry_read_range(
+            {"controller_ids": ["foo"], "frame_start": 0, "frame_end": 10, "step": 0},
+            fake_scene,
+        )
+
+
+def test_telemetry_read_range_rejects_inverted_range(fake_scene):
+    with pytest.raises(ValueError, match="frame_end"):
+        _dispatchers._d_telemetry_read_range(
+            {"controller_ids": ["foo"], "frame_start": 30, "frame_end": 10},
+            fake_scene,
+        )
+
+
+def test_telemetry_read_range_uses_step(fake_scene):
+    """A step of 5 across [0, 20] should sample frames [0, 5, 10, 15, 20]."""
+    scene = _scene_with_objects(("o1", "pelvis_Box", "Box"))
+    _run_mod_immediately(scene, "modify_update")
+    out = _dispatchers._d_telemetry_read_range(
+        {"controller_ids": ["pelvis_Box"], "frame_start": 0, "frame_end": 20, "step": 5},
+        scene,
+    )
+    assert out["frames"] == [0, 5, 10, 15, 20]
 
 
 # os import used above for path joins in fixtures

@@ -1,0 +1,31 @@
+# Force LF line endings for source files so Windows checkouts don't trigger
+# CRLF conversion warnings on every commit. Python is happy with LF on every
+# platform; the only files that genuinely want CRLF are Windows batch scripts.
+
+*.py        text eol=lf
+*.md        text eol=lf
+*.json      text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.toml      text eol=lf
+*.sh        text eol=lf
+*.ps1       text eol=lf
+*.cfg       text eol=lf
+*.ini       text eol=lf
+*.txt       text eol=lf
+Makefile    text eol=lf
+LICENSE     text eol=lf
+.gitignore  text eol=lf
+.gitattributes text eol=lf
+
+# Treat these as binary so git doesn't try to diff or normalize.
+*.fbx       binary
+*.casc      binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.zip       binary
+*.whl       binary
+*.tar.gz    binary
