@@ -22,7 +22,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install ruff
-        run: pip install "ruff>=0.5"
+        # Pin to a specific minor for reproducible formatting — bump together
+        # with `ruff` in pyproject.toml dev extras when upgrading. Floating
+        # the version caused CI to install a different patch from local,
+        # which surfaced minor format-rule drift on every PR.
+        run: pip install "ruff==0.15.14"
 
       - name: ruff check
         run: ruff check src/ cascadeur_side/ tests/ scripts/
