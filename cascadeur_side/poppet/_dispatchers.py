@@ -978,7 +978,9 @@ def _d_object_transform_get(params, scene):
                         try:
                             e_ang = v.to_euler_angles()
                             out[label + "_euler"] = _vec_to_list(e_ang) or [
-                                float(e_ang[0]), float(e_ang[1]), float(e_ang[2])
+                                float(e_ang[0]),
+                                float(e_ang[1]),
+                                float(e_ang[2]),
                             ]
                         except Exception:
                             out[label + "_repr"] = _safe_repr(v)
@@ -1257,6 +1259,7 @@ def _d_viewport_screenshot(params, scene):
     path = params.get("path")
     if not isinstance(path, str) or not path:
         import tempfile
+
         path = os.path.join(tempfile.gettempdir(), f"poppet_screenshot_{int(time.time())}.png")
     normalized = path.replace("\\", "/")
     try:
