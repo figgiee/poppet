@@ -1256,7 +1256,7 @@ def _d_viewport_screenshot(params, scene):
 
     path = params.get("path")
     if not isinstance(path, str) or not path:
-        import tempfile, time
+        import tempfile
         path = os.path.join(tempfile.gettempdir(), f"poppet_screenshot_{int(time.time())}.png")
     normalized = path.replace("\\", "/")
     try:
