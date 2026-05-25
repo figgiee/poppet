@@ -202,9 +202,11 @@ def test_object_duplicate_404s_on_unknown(fake_scene):
 # ---------------------------------------------------------------------------
 
 
-def test_screenshot_requires_path(fake_scene):
-    with pytest.raises(ValueError, match="path"):
-        _dispatchers._d_viewport_screenshot({}, fake_scene)
+def test_screenshot_auto_generates_path(csc_mock, fake_scene):
+    # When path is omitted, dispatcher auto-generates a temp path
+    out = _dispatchers._d_viewport_screenshot({}, fake_scene)
+    assert "path" in out
+    assert "poppet_screenshot_" in out["path"]
 
 
 def test_screenshot_returns_method_used(csc_mock, fake_scene, tmp_path):
@@ -241,16 +243,19 @@ def test_frame_set_uses_modify_update_with_session(fake_scene):
     assert captured["called"]
     assert out["requested"] == 7
     assert out["current_frame"] == 7
-    assert out["persisted"] is True
+    assert "note" in out  # persisted field removed; note explains the readback lag
 
 
-def test_frame_set_reports_unpersisted_when_get_disagrees(fake_scene):
+def test_frame_set_readback_lag_noted(fake_scene):
+    # get_current_frame often lags behind the in-session change; response
+    # documents this rather than reporting a misleading persisted=False.
     fake_scene.modify_update_with_session.return_value = None
     fake_scene.get_current_frame.return_value = 0
     out = _dispatchers._d_frame_set({"frame": 30}, fake_scene)
     assert out["requested"] == 30
     assert out["current_frame"] == 0
-    assert out["persisted"] is False
+    assert "note" in out
+    assert "persisted" not in out
 
 
 # ---------------------------------------------------------------------------
