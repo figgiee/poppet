@@ -1270,20 +1270,27 @@ def _d_viewport_screenshot(params, scene):
     app = csc.app.get_application()
     last_err = None
 
-    # Strategy 1: RenderToFile tool.
+    # Strategy 1: RenderToFile tool. `take_image` is directly on the tool
+    # object, NOT under a `.editor(view_scene)` wrapper — the editor()
+    # indirection used pre-v0.6.1 was wrong and silently raised
+    # AttributeError, dropping through to the action fallback. Confirmed live
+    # via exec_csc: `dir(rtf)` is ['play_to_images_sequence',
+    # 'play_to_video_file', 'take_image'], no `editor`.
     try:
         tm = app.get_tools_manager()
         rtf = tm.get_tool("RenderToFile")
-        view_scene = app.current_scene()
-        editor = rtf.editor(view_scene)
-        editor.take_image(normalized)
+        rtf.take_image(normalized)
         if os.path.exists(normalized):
             return {
                 "path": normalized,
                 "exists": True,
                 "size_bytes": os.path.getsize(normalized),
-                "method": "RenderToFile.editor.take_image",
+                "method": "RenderToFile.take_image",
             }
+        # No exception but file didn't appear — take_image may accept no
+        # args in this Cascadeur version, in which case Cascadeur picked
+        # its own output path. Record that and fall through.
+        last_err = "RenderToFile.take_image returned but file not at requested path"
     except Exception as e:
         last_err = f"RenderToFile: {type(e).__name__}: {e}"
 
