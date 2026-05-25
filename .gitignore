@@ -21,3 +21,4 @@ Thumbs.db
 .vscode/
 .trees/
 tmp/
+_test_*.pkl

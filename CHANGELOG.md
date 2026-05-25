@@ -4,6 +4,39 @@ All notable changes to Poppet — Cascadeur MCP. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per
 [SemVer](https://semver.org/).
 
+## [0.6.0] — 2026-05-25
+
+### Fixed
+
+- **`model.layers_editor()` everywhere** — `session.layers_editor()` doesn't
+  exist; all 8 dispatcher sites that called it (`layer_add`, `layer_delete`,
+  `bake_range`, `keyframe_add`, `keyframe_remove`, `active_layer_set`,
+  `layer_visible_set`, `layer_locked_set`) were throwing `AttributeError` and
+  returning errors silently. Fixed to use `model.layers_editor()` (the correct
+  parameter in the `modify_with_session` callback).
+- **Two-step keyframe write** — `keyframe_set` and `set_controller_scale`
+  failed on scenes with only a T-pose (1 frame) because writing to frame N>0
+  requires the animation data arrays to be extended first.  Added a
+  `modify_with_session` pre-pass that calls
+  `layers_editor.set_fixed_interpolation_or_key_if_need(layer_id, frame, True)`
+  on every layer before the `modify_update` write step.
+- **Quaternion rotation readback** — `csc.math.Quaternion.x/y/z/w` are
+  callable methods, not properties. `telemetry_read` and `object_transform_get`
+  were calling `float(q.x)` on the bound-method object, which raised
+  `TypeError` and fell through to the `rotation_euler` fallback.  Fixed with a
+  `callable()` guard; both now return `rotation: [qx, qy, qz, qw]`.
+- **Layer names in `list_layers`** — `csc.layers.Header.name` is a plain
+  string property, not a method. The previous `h.name() if callable(...)` path
+  always evaluated to `str(h)` → `"<csc.layers.Header object at 0x…>"`.  Fixed
+  to read `getattr(h, "name", None)` directly.
+- **`screenshot_viewport` path now optional** — dispatcher auto-generates a
+  temp path (`poppet_screenshot_<ts>.png`) when none is supplied.  MCP tool
+  signature updated to `path: str | None = None`.
+
+### Changed
+
+- `.gitignore` — added `_test_*.pkl` to ignore live-test pickle artifacts.
+
 ## [0.5.0] — 2026-05-24
 
 ### Added
