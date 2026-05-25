@@ -412,11 +412,12 @@ def duplicate_object(object_name: str) -> dict:
 
 
 @mcp.tool()
-def screenshot_viewport(path: str) -> dict:
+def screenshot_viewport(path: str | None = None) -> dict:
     """Capture the 3D viewport to an image file.
 
     Tries csc.tools.RenderToFile.editor.take_image first, falls back to
     Viewport.* action IDs. Path must be absolute; PNG recommended.
+    If omitted, a temp file is auto-generated.
     """
     return _call("viewport_screenshot", path=path)
 

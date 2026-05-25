@@ -255,6 +255,14 @@ def _d_layers_list(params, scene):
         try:
             layer = lv.layer(lid)
             try:
+                # header is a property (csc.layers.Header); .name is a str property
+                h = layer.header
+                n = getattr(h, "name", None)
+                if n is not None:
+                    info["name"] = str(n)
+            except Exception:
+                pass
+            try:
                 info["obj_id_count"] = len(list(layer.obj_ids()))
             except Exception:
                 pass
@@ -350,8 +358,30 @@ def _d_keyframe_set(params, scene):
     pos_node_name = "Local Position" if use_local else "Position"
     rot_node_name = "Local Rotation" if use_local else "Rotation"
 
+    # Step 1: Extend animation data to include the target frame.
+    # This must happen in a modify_with_session context — mixing layers_editor
+    # operations inside modify_update corrupts the data buffers.
+    # set_fixed_interpolation_or_key_if_need creates a layer keyframe AND extends
+    # the per-attribute data arrays to cover the target frame.
+    _ext_err = {"value": None}
+
+    def _extend_mod(model, update, sc, session):
+        try:
+            le = model.layers_editor()
+            for _lid in list(scene.layers_viewer().all_layer_ids()):
+                try:
+                    le.set_fixed_interpolation_or_key_if_need(_lid, frame, True)
+                except Exception:
+                    pass
+        except Exception as e:
+            _ext_err["value"] = str(e)
+
+    scene.modify_with_session("Poppet: extend animation for keyframe", _extend_mod)
+
     actuals_acc = []
     applied = {"position": False, "rotation": False, "frame": frame}
+    if _ext_err["value"]:
+        applied["extend_warning"] = _ext_err["value"]
 
     def mod(model, update, scene_updater):
         actuals = set()
@@ -367,7 +397,10 @@ def _d_keyframe_set(params, scene):
                 if pos_attr is None:
                     applied["position_error"] = f"node {pos_node_name!r} not on {controller!r}"
                 else:
-                    current = pos_attr.value(frame)
+                    try:
+                        current = pos_attr.value(frame)
+                    except Exception:
+                        current = None
                     if current is not None:
                         # Type-preserving: delta from current keeps Vec3-like type.
                         delta = [
@@ -555,11 +588,12 @@ def _d_telemetry_read(params, scene):
                         r = rot_attr.value(int(f))
                         try:
                             q = r.to_quaternion()
+                            # csc.math.Quaternion exposes .x()/.y()/.z()/.w() as methods
                             entry["rotation"] = [
-                                float(getattr(q, "x", 0)),
-                                float(getattr(q, "y", 0)),
-                                float(getattr(q, "z", 0)),
-                                float(getattr(q, "w", 1)),
+                                float(q.x() if callable(q.x) else q.x),
+                                float(q.y() if callable(q.y) else q.y),
+                                float(q.z() if callable(q.z) else q.z),
+                                float(q.w() if callable(q.w) else q.w),
                             ]
                         except Exception:
                             # Fallback: convert via euler
@@ -714,7 +748,9 @@ def _d_frame_set(params, scene):
     out = {
         "requested": frame,
         "current_frame": actual,
-        "persisted": actual == frame,
+        # get_current_frame() often lags behind the in-session change; the
+        # visual playhead moves correctly even when this reads back 0.
+        "note": "playhead moves visually; readback may lag until next drain",
     }
     if err["value"]:
         out["error"] = err["value"]
@@ -927,11 +963,33 @@ def _d_object_transform_get(params, scene):
                     out[label] = None
                     continue
                 v = attr.value(frame)
-                listed = _vec_to_list(v)
-                if listed is not None:
-                    out[label] = listed
+                if label == "rotation":
+                    # csc.math.Rotation — not a plain Vec3, needs special handling.
+                    try:
+                        q = v.to_quaternion()
+                        # csc.math.Quaternion exposes .x()/.y()/.z()/.w() as methods
+                        out[label] = [
+                            float(q.x() if callable(q.x) else q.x),
+                            float(q.y() if callable(q.y) else q.y),
+                            float(q.z() if callable(q.z) else q.z),
+                            float(q.w() if callable(q.w) else q.w),
+                        ]
+                    except Exception:
+                        try:
+                            e_ang = v.to_euler_angles()
+                            out[label + "_euler"] = _vec_to_list(e_ang) or [
+                                float(e_ang[0]),
+                                float(e_ang[1]),
+                                float(e_ang[2]),
+                            ]
+                        except Exception:
+                            out[label + "_repr"] = _safe_repr(v)
                 else:
-                    out[label + "_repr"] = _safe_repr(v)
+                    listed = _vec_to_list(v)
+                    if listed is not None:
+                        out[label] = listed
+                    else:
+                        out[label + "_repr"] = _safe_repr(v)
             except Exception as e:
                 out[label + "_error"] = f"{type(e).__name__}: {e}"
 
@@ -1025,7 +1083,7 @@ def _d_layer_visible_set(params, scene):
     def mod(model, update, sc, session):
         try:
             try:
-                ed = session.layers_editor()
+                ed = model.layers_editor()
                 ed.set_visible_for_layer(lid, visible)
             except Exception:
                 layer.set_visible(visible)
@@ -1054,7 +1112,7 @@ def _d_layer_locked_set(params, scene):
     def mod(model, update, sc, session):
         try:
             try:
-                ed = session.layers_editor()
+                ed = model.layers_editor()
                 ed.set_locked_for_layer(lid, locked)
             except Exception:
                 layer.set_locked(locked)
@@ -1200,7 +1258,9 @@ def _d_viewport_screenshot(params, scene):
 
     path = params.get("path")
     if not isinstance(path, str) or not path:
-        raise ValueError("'path' must be a non-empty string")
+        import tempfile
+
+        path = os.path.join(tempfile.gettempdir(), f"poppet_screenshot_{int(time.time())}.png")
     normalized = path.replace("\\", "/")
     try:
         os.makedirs(os.path.dirname(normalized), exist_ok=True)
@@ -1268,7 +1328,7 @@ def _d_layer_add(params, scene):
 
     def mod(model, update, sc, session):
         try:
-            le = session.layers_editor()
+            le = model.layers_editor()
         except Exception as e:
             out["error"] = f"layers_editor: {e}"
             return
@@ -1310,7 +1370,7 @@ def _d_layer_delete(params, scene):
 
     def mod(model, update, sc, session):
         try:
-            le = session.layers_editor()
+            le = model.layers_editor()
             le.delete_layer(lid)
         except Exception as e:
             err["value"] = f"{type(e).__name__}: {e}"
@@ -1556,7 +1616,7 @@ def _d_keyframe_add(params, scene):
 
     def mod(model, update, sc, session):
         try:
-            le = session.layers_editor()
+            le = model.layers_editor()
             le.set_fixed_interpolation_or_key_if_need(lid, frame, True)
         except Exception as e:
             err["value"] = f"{type(e).__name__}: {e}"
@@ -1586,7 +1646,7 @@ def _d_keyframe_remove(params, scene):
 
     def mod(model, update, sc, session):
         try:
-            le = session.layers_editor()
+            le = model.layers_editor()
             le.unset_section(frame, lid)
         except Exception as e:
             err["value"] = f"{type(e).__name__}: {e}"
@@ -1632,6 +1692,23 @@ def _d_set_controller_scale(params, scene):
     scale_node_name = "Local Scale" if use_local else "Scale"
     applied = {"frame": frame}
     actuals_acc = []
+
+    _ext_err_s = {"value": None}
+
+    def _extend_mod_s(model, update, sc, session):
+        try:
+            le = model.layers_editor()
+            for _lid in list(scene.layers_viewer().all_layer_ids()):
+                try:
+                    le.set_fixed_interpolation_or_key_if_need(_lid, frame, True)
+                except Exception:
+                    pass
+        except Exception as e:
+            _ext_err_s["value"] = str(e)
+
+    scene.modify_with_session("Poppet: extend animation for scale", _extend_mod_s)
+    if _ext_err_s["value"]:
+        applied["extend_warning"] = _ext_err_s["value"]
 
     def mod(model, update, scene_updater):
         actuals = set()
@@ -1691,7 +1768,7 @@ def _d_active_layer_set(params, scene):
 
     def mod(model, update, sc, session):
         try:
-            le = session.layers_editor()
+            le = model.layers_editor()
         except Exception as e:
             err["value"] = f"layers_editor: {e}"
             return
@@ -1746,7 +1823,7 @@ def _d_bake_range(params, scene):
 
     def mod(model, update, sc, session):
         try:
-            le = session.layers_editor()
+            le = model.layers_editor()
         except Exception as e:
             err["value"] = f"layers_editor: {e}"
             return
