@@ -41,7 +41,7 @@
     {
       "check": "sdist contents",
       "ok": true,
-      "detail": "42 entries"
+      "detail": "45 entries"
     }
   ],
   "ok": true,

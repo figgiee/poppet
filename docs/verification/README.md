@@ -13,6 +13,7 @@ Target: **Cascadeur 2026.2.3.0.16863** (per-user install,
 | Tool-level live verification | `python scripts/live_verify.py --scene <Cascy> --screenshot ... --mutations` | **43 / 44 steps passed** | [`live-verify.json`](live-verify.json) |
 | MCP stdio end-to-end | `python scripts/live_e2e_mcp.py` | passed, 45 tools registered | [`live-e2e-mcp.txt`](live-e2e-mcp.txt) |
 | Published release artifacts | `python scripts/verify_release_artifacts.py --tag v1.0.0` | wheel + sdist metadata/import/entry point | [`release-artifacts.json`](release-artifacts.json) |
+| Clean-venv install from release wheel | `uv venv` + `uv pip install --no-cache <wheel URL>` + `scripts/mcp_smoke_test.py` | `mcp==1.30.0` resolved from the `mcp<2` pin; MCP handshake + 45 tools passed from the installed artifact |
 
 The single failing step is `duplicate_object` — a known 2026.2.3 issue (the scene
 clipboard paste modify callback fails; the tool surfaces a clear error rather than a
