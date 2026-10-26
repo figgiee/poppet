@@ -33,7 +33,8 @@ one of these, configured once in the repository/PyPI:
 Then re-run the failed job:
 
 ```bash
-gh run rerun 40417604766 --failed -R figgiee/poppet
+gh run list  -R figgiee/poppet --workflow release.yml --limit 1
+gh run rerun <run-id> --failed -R figgiee/poppet
 ```
 
 ## Option B — PyPI API token secret

@@ -20,7 +20,8 @@ classifiers = [
     "Topic :: Multimedia :: Graphics :: 3D Modeling",
 ]
 dependencies = [
-    "mcp>=1.0.0",
+    # MCP SDK 2.x renamed FastMCP to MCPServer; this server targets the 1.x API.
+    "mcp>=1.0.0,<2",
     "pydantic>=2.0.0",
 ]
 

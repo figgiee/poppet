@@ -58,6 +58,11 @@ Cascadeur as source text on the first tool call.
 
 ### Fixed
 
+- Dependency: pin `mcp>=1.0.0,<2`. The MCP SDK 2.x renamed `FastMCP` to
+  `MCPServer`, so an unpinned fresh install could not import the server
+  (`ModuleNotFoundError: mcp.server.fastmcp`). Found by installing the
+  released wheel into a clean venv during release verification.
+
 - Live-verified 1.0 against Cascadeur 2026.2.3 with the Cascy sample scene: 43/44
   tool steps passed end-to-end (`docs/verification/live-verify.json`) and the full
   MCP stdio path passed with 45 tools registered. The one failure,

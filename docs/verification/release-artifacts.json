@@ -1,0 +1,51 @@
+{
+  "repo": "figgiee/poppet",
+  "tag": "v1.0.0",
+  "checks": [
+    {
+      "check": "assets downloaded",
+      "ok": true,
+      "detail": [
+        "cascadeur_mcp-1.0.0-py3-none-any.whl",
+        "cascadeur_mcp-1.0.0.tar.gz"
+      ]
+    },
+    {
+      "check": "wheel metadata",
+      "ok": true,
+      "detail": {
+        "Name": "cascadeur-mcp",
+        "Version": "1.0.0"
+      }
+    },
+    {
+      "check": "wheel contains runtime source",
+      "ok": true,
+      "detail": true
+    },
+    {
+      "check": "wheel contains bootstrap",
+      "ok": true,
+      "detail": true
+    },
+    {
+      "check": "wheel imports",
+      "ok": true,
+      "detail": "1.0.0"
+    },
+    {
+      "check": "bootstrap CLI runs from wheel",
+      "ok": true,
+      "detail": true
+    },
+    {
+      "check": "sdist contents",
+      "ok": true,
+      "detail": "42 entries"
+    }
+  ],
+  "ok": true,
+  "wheel": "cascadeur_mcp-1.0.0-py3-none-any.whl",
+  "sdist": "cascadeur_mcp-1.0.0.tar.gz",
+  "project": "cascadeur-mcp"
+}

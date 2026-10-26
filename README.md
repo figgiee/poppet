@@ -14,7 +14,8 @@ scene I/O, FBX, viewport capture, escape hatches — and drives Cascadeur throug
 
 There is **nothing to install inside Cascadeur**: no `user_scripts` copy, no
 `settings.json` edits, no menu commands, no queue draining, no window-focus dance.
-Requires Cascadeur 2026.2.3+, Python 3.11+ (`uvx` is enough) and an MCP client.
+Requires Cascadeur 2026.2.3+, Python 3.11+ (`uvx` is enough), the MCP SDK 1.x
+(`mcp>=1.0.0,<2`; the 2.x SDK renamed `FastMCP`) and an MCP client.
 
 > **Cascadeur 2025.3.x is not supported in 1.0.** The file-queue 0.6 line is preserved
 > at the [v0.6.0 release](https://github.com/figgiee/poppet/releases/tag/v0.6.0).
