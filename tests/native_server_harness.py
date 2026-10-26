@@ -126,11 +126,22 @@ class NativeServer:
 
 
 def _install_fake_modules(scene):
-    csc = types.ModuleType("csc")
+    """Install fake ``csc`` / ``events`` modules for Cascadeur's script server.
+
+    ``csc`` is a MagicMock with a real ``MessageLevel`` enum and an ``app``
+    submodule whose ``get_application()`` returns a mock application, so real
+    Poppet handlers can be exercised end-to-end: unknown attributes auto-create
+    instead of raising AttributeError.
+    """
+    from unittest.mock import MagicMock
+
+    csc = MagicMock(name="csc")
     csc.MessageLevel = FakeMessageLevel
 
-    csc_app = types.ModuleType("csc.app")
-    csc_app.get_application = lambda: FakeApp(scene)
+    csc_app = MagicMock(name="csc.app")
+    application = MagicMock(name="application")
+    application.current_scene.return_value = scene
+    csc_app.get_application.return_value = application
     csc.app = csc_app
 
     events = types.ModuleType("events")
