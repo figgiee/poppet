@@ -252,5 +252,6 @@ their own Cascadeur-side bridges).
 [USAGE.md](USAGE.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) ·
 [docs/architecture.md](docs/architecture.md) ·
 [docs/mcp_client_configs.md](docs/mcp_client_configs.md) ·
+[docs/publishing.md](docs/publishing.md) ·
 [docs/research/](docs/research/README.md). License: MIT — see [LICENSE](LICENSE).
 cascadeur-mcp is independent of Nekki; Cascadeur is a trademark of Nekki Limited.

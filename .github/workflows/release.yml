@@ -1,8 +1,9 @@
 name: release
 
 # Builds the wheel + sdist on every tag push (v*) and uploads to PyPI.
-# Requires PYPI_API_TOKEN secret (Trusted Publishing also works — drop the
-# password block if you switch).
+# PyPI needs either a PYPI_API_TOKEN repo secret or a Trusted Publisher for the
+# `cascadeur-mcp` project (see docs/publishing.md). Without either, the GitHub
+# release still succeeds and only the pypi-publish job fails.
 
 on:
   push:
