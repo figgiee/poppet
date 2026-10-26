@@ -212,6 +212,9 @@ sample scene:
   Transcript: [docs/verification/live-e2e-mcp.txt](docs/verification/live-e2e-mcp.txt).
 - `python -m pytest tests` — 210 passed, 1 skipped; protocol tests run Cascadeur's
   *shipped* `script_server.py` offline with fake `csc`/`events`.
+- **Full capability proof:** every one of the 45 tools called through the real MCP
+  stdio server, with viewport screenshots of the visible effects, plus the FBX/.casc
+  artifacts written and re-imported during the run: [docs/proof/](docs/proof/README.md).
 
 ## Known limitations
 
