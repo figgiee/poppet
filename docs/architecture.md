@@ -1,14 +1,14 @@
-# Poppet architecture (1.0)
+# cascadeur-mcp architecture (1.0)
 
-Poppet 1.0 is a typed MCP front end over **Cascadeur 2026.2's built-in MCP script
-server**. The Cascadeur side of Poppet has no install step: it is source text that
+cascadeur-mcp 1.0 is a typed MCP front end over **Cascadeur 2026.2's built-in MCP script
+server**. The Cascadeur side of cascadeur-mcp has no install step: it is source text that
 the MCP server ships into Cascadeur on the first tool call and executes as a
 private module (`poppet_rt`).
 
 ## TL;DR
 
 ```
-MCP client ──stdio──▶ poppet-mcp ──HTTP 127.0.0.1:8765──▶ Cascadeur script server
+MCP client ──stdio──▶ cascadeur-mcp ──HTTP 127.0.0.1:8765──▶ Cascadeur script server
                                                              │ scene_idle
                                                              ▼
                                                     poppet_rt (in-app runtime)
@@ -17,10 +17,10 @@ MCP client ──stdio──▶ poppet-mcp ──HTTP 127.0.0.1:8765──▶ Ca
                                                      the running Cascadeur scene
 ```
 
-- `poppet-mcp` is a FastMCP stdio server (Python 3.11+, `pip`/`uvx`); it talks
+- `cascadeur-mcp` is a FastMCP stdio server (Python 3.11+, `pip`/`uvx`); it talks
   loopback HTTP to Cascadeur's script server (`GET /health`, `POST /run`)
 - The server evaluates one Python expression on the next `scene_idle` event on
-  Cascadeur's Qt main thread and returns its value's `repr`; Poppet submits one
+  Cascadeur's Qt main thread and returns its value's `repr`; cascadeur-mcp submits one
   expression that dispatches to / bootstraps `poppet_rt`
 - No user_scripts copy, no `settings.json` edits, no menu commands, no queue, no
   window-focus requirement
@@ -28,15 +28,15 @@ MCP client ──stdio──▶ poppet-mcp ──HTTP 127.0.0.1:8765──▶ Ca
 ## Why the built-in server
 
 Cascadeur 2026.2 (August 2026) added a vendor script server (**Scripts → MCP → Start
-script server**) that removes the two problems that forced Poppet 0.x into a file-queue
+script server**) that removes the two problems that forced cascadeur-mcp 0.x into a file-queue
 design: code now runs on the main thread inside a `scene_idle` event (the same safe
-context as bundled commands, with background-thread starvation no longer Poppet's
+context as bundled commands, with background-thread starvation no longer cascadeur-mcp's
 problem), over a stable loopback HTTP transport instead of request files in
 `%LOCALAPPDATA%`, event hooks, a manual drain menu and a Windows focus nudge.
 
 The trade-off: the server exposes exactly **one tool** (`run_script`) and returns
 raw Python results — no typed tools, workflow semantics, safety classification, or
-long-operation support, and a hard ~30 s cap. That gap is Poppet's reason to exist.
+long-operation support, and a hard ~30 s cap. That gap is cascadeur-mcp's reason to exist.
 
 ## The eval-expression trick
 
@@ -48,14 +48,14 @@ Cascadeur's server compiles submitted code with `mode="eval"` first, falling bac
 | `eval` | `{"ok": true, "value": "<repr of value>", "messages": [...]}` |
 | `exec` | `{"ok": true, "value": "", ...}` — statements return no data |
 
-Poppet needs data back, so every submission is **one expression**. Arbitrarily
+cascadeur-mcp needs data back, so every submission is **one expression**. Arbitrarily
 large programs are wrapped in a lambda that execs them in a private namespace and
 yields a result variable (`src/poppet_mcp/_expression.py`):
 
 ```python
 (lambda __ns__: (
-    exec(compile(<program>, "<poppet>", "exec"), __ns__),
-    __ns__.get("__poppet_result__"),
+    exec(compile(<program>, "<cascadeur-mcp>", "exec"), __ns__),
+    __ns__.get("__cascadeur-mcp_result__"),
 )[1])({"csc": csc, "scene": scene, "app": app})
 ```
 
@@ -71,7 +71,7 @@ the runtime returns JSON text, and the MCP side decodes it in three steps:
 3. The connection builds the dispatch expression: if the loaded runtime's
    `RUNTIME_VERSION` matches the client's expectation, the program calls
    `poppet_rt.dispatch(...)`; otherwise it returns a one-key bootstrap marker
-   (`{"__poppet_bootstrap_required__": true}`) instead of failing.
+   (`{"__cascadeur-mcp_bootstrap_required__": true}`) instead of failing.
 4. `POST /run` with the wrapped expression (`POPPET_TIMEOUT`, default 35 s).
 5. Cascadeur's server waits for `scene_idle` (its own ~30 s cap), runs the
    expression on the Qt thread, and returns `{"ok": ..., "value": "<repr>", ...}`.
@@ -99,15 +99,15 @@ should run in the `scene_idle` context. Prompts only see typed tool arguments.
   digest, register it in `sys.modules`, then dispatch.
 - Consequences: a Cascadeur restart clears the in-memory module (the next call
   re-bootstraps). A script reload leaves it alone — which is safe because the digest
-  check re-bootstraps on the first call after any Poppet upgrade. No manual cache
+  check re-bootstraps on the first call after any cascadeur-mcp upgrade. No manual cache
   clearing and no version-bump discipline required. The first call after either event
   is slower; later calls are compact JSON.
 
 ## Safety model
 
-- **Loopback only.** The script server binds `127.0.0.1`; Poppet never exposes it.
+- **Loopback only.** The script server binds `127.0.0.1`; cascadeur-mcp never exposes it.
   Anything that can reach port 8765 can run arbitrary Python in Cascadeur — that is
-  Cascadeur's trust model, and Poppet does not widen it. Don't port-forward it.
+  Cascadeur's trust model, and cascadeur-mcp does not widen it. Don't port-forward it.
 - **No auth, no TLS.** Local-only by design; loopback traffic bypasses system proxies
   (`urllib.request.ProxyHandler({})`) so proxy config cannot leak requests.
 - **Arbitrary code is explicit.** `execute_csc_code` and `run_script` execute
@@ -144,7 +144,7 @@ queue in the listen backlog until they time out, and `/run` scripts never reach 
 `scene_idle` callback they wait for. Menu-started servers therefore print "listening"
 but are unreachable until Python happens to run on the main thread.
 
-Poppet's `poppet-bootstrap` (printed by `poppet-bootstrap`, pasted once per Cascadeur
+cascadeur-mcp's `cascadeur-bootstrap` (printed by `cascadeur-bootstrap`, pasted once per Cascadeur
 launch) fixes both halves from inside the app:
 
 - starts/stops the built-in server on a free port (menu default 8765, walking upward),
@@ -152,13 +152,13 @@ launch) fixes both halves from inside the app:
   — this keeps the interpreter cycling the GIL *and* drives the queue drain.
 
 The timer lives in Cascadeur's Python memory only; nothing is written into
-`user_scripts/`. The chosen port goes to `%LOCALAPPDATA%\poppet-mcp\server.json`, which
+`user_scripts/`. The chosen port goes to `%LOCALAPPDATA%\cascadeur-mcp\server.json`, which
 the client reads when `POPPET_URL` is unset.
 
 ### The ~30 s cap
 
 The script server's `_queue_script` waits at most 30 s for the next idle event and
-drops requests that miss it. A handler running longer trips Poppet's client timeout
+drops requests that miss it. A handler running longer trips cascadeur-mcp's client timeout
 while it may still finish in-app. Keep calls short, split long work, use a small
 `run_autophysics(timeout_sec=...)` (5–10 s) and poll. Large exports may exceed the
 cap; verify the file before retrying.
@@ -183,11 +183,11 @@ developer tools occupy 8765 on the author's machine (the DSH channel-pack is one
 
 ## History: why the 0.x file queue existed
 
-Poppet 0.x targeted Cascadeur 2025.3.3, whose embedded Python had no PySide, no
+cascadeur-mcp 0.x targeted Cascadeur 2025.3.3, whose embedded Python had no PySide, no
 main-thread scheduler and starved background threads. An in-app TCP listener was
-impossible, so 0.x wrote request JSON files into `%LOCALAPPDATA%\poppet-mcp\` and
+impossible, so 0.x wrote request JSON files into `%LOCALAPPDATA%\cascadeur-mcp\` and
 relied on a `user_scripts/` package plus `scene_activated` hooks or a
-**Commands → Poppet → Process Pending** click to drain them — workable, but it needed
+**Commands → cascadeur-mcp → Process Pending** click to drain them — workable, but it needed
 a Cascadeur-side install, a manual drain fallback, a focus nudge, and paid a file-I/O
 round trip per call. Cascadeur 2026.2 removed all three constraints; the queue,
 install, menu commands and nudge are gone in 1.0. Legacy design:

@@ -1,4 +1,4 @@
-"""Poppet's Cascadeur-side bootstrap — run once per Cascadeur 2026.2 session.
+"""cascadeur-mcp's Cascadeur-side bootstrap — run once per Cascadeur 2026.2 session.
 
 Cascadeur 2026.2's embedded interpreter keeps the GIL in its Qt idle loop, so the
 built-in MCP script server's background HTTP thread starves whenever Cascadeur is
@@ -9,14 +9,14 @@ anything:
 2. installs a 10 ms PySide ``QTimer`` that keeps the interpreter ticking and
    drives ``scene_idle`` events, which both unblocks the server thread and lets
    queued ``run_script`` calls execute,
-3. records the chosen port in ``%LOCALAPPDATA%\\poppet-mcp\\server.json`` so the
-   ``poppet-mcp`` client can find it without configuration.
+3. records the chosen port in ``%LOCALAPPDATA%\\cascadeur-mcp\\server.json`` so the
+   ``cascadeur-mcp`` client can find it without configuration.
 
 Usage — in Cascadeur: **Window → Python Console**, paste and Execute::
 
     exec(open(r"C:\\path\\to\\cascadeur_bootstrap.py").read())
 
-``poppet-bootstrap`` writes this file for you and prints the exact line.
+``cascadeur-bootstrap`` writes this file for you and prints the exact line.
 
 The script is executed *inside* Cascadeur: it must only import Cascadeur's own
 modules (``csc``, ``scripts.*``, ``events``, ``PySide6``) and the standard library.
@@ -30,7 +30,7 @@ import traceback
 
 DEFAULT_PORT = 8765
 PORT_CANDIDATES = 10
-STATE_DIR_NAME = "poppet-mcp"
+STATE_DIR_NAME = "cascadeur-mcp"
 
 
 def _state_dir():
@@ -60,7 +60,7 @@ def _stop_existing(server_module):
     if server_module.is_running():
         try:
             server_module.stop(_domain_scene())
-            print("[Poppet] stopped previous script server")
+            print("[cascadeur-mcp] stopped previous script server")
         except Exception:
             traceback.print_exc()
 
@@ -73,7 +73,7 @@ def _start_on_free_port(server_module, preferred):
             return candidate
         except OSError as exc:  # port already in use
             last_error = exc
-            print(f"[Poppet] port {candidate} unavailable: {exc}")
+            print(f"[cascadeur-mcp] port {candidate} unavailable: {exc}")
         except Exception as exc:  # noqa: BLE001 - report and try the next port
             last_error = exc
             traceback.print_exc()
@@ -119,7 +119,7 @@ def main():
             try:
                 preferred = int(env_port)
             except ValueError:
-                print(f"[Poppet] ignoring invalid POPPET_SERVER_PORT={env_port!r}")
+                print(f"[cascadeur-mcp] ignoring invalid POPPET_SERVER_PORT={env_port!r}")
 
         port = _start_on_free_port(server_module, preferred)
         _install_keeper()
@@ -135,11 +135,11 @@ def main():
         with open(os.path.join(_state_dir(), "server.json"), "w", encoding="utf-8") as handle:
             json.dump(ready, handle, indent=2)
 
-        print(f"[Poppet] script server ready at http://127.0.0.1:{port}/mcp")
-        print("[Poppet] interpreter keeper installed (10 ms); keep Cascadeur open")
+        print(f"[cascadeur-mcp] script server ready at http://127.0.0.1:{port}/mcp")
+        print("[cascadeur-mcp] interpreter keeper installed (10 ms); keep Cascadeur open")
         if port != preferred:
             print(
-                f"[Poppet] set POPPET_URL=http://127.0.0.1:{port} for the MCP client "
+                f"[cascadeur-mcp] set POPPET_URL=http://127.0.0.1:{port} for the MCP client "
                 f"(default port {preferred} was busy)"
             )
     except Exception:
@@ -149,7 +149,7 @@ def main():
                 json.dump(ready, handle, indent=2)
         except Exception:
             pass
-        print("[Poppet] bootstrap failed:")
+        print("[cascadeur-mcp] bootstrap failed:")
         traceback.print_exc()
 
 

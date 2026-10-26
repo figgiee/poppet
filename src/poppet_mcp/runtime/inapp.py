@@ -1,9 +1,9 @@
-"""Poppet in-app runtime — executed *inside* Cascadeur 2026.2+.
+"""cascadeur-mcp in-app runtime — executed *inside* Cascadeur 2026.2+.
 
 This file is not imported by the MCP server process. Its source text is shipped
 to Cascadeur's built-in MCP script server (``Scripts -> MCP -> Start script
 server``) on the first tool call, then executed there as a private module named
-``poppet_rt``. The Cascadeur side of Poppet therefore has **no install step**.
+``poppet_rt``. The Cascadeur side of cascadeur-mcp therefore has **no install step**.
 
 Contract with the MCP side (see ``src/poppet_mcp/_expression.py``)::
 
@@ -17,7 +17,7 @@ Every handler runs on Cascadeur's Qt main thread, inside a ``scene_idle`` event 
 the same context bundled Cascadeur commands run in — so mutating handlers use the
 same undo-friendly ``scene.modify*`` patterns as Nekki's own scripts.
 
-The handlers below were migrated from Poppet 0.6's file-queue dispatchers; the
+The handlers below were migrated from cascadeur-mcp 0.6's file-queue dispatchers; the
 command names and parameter shapes are unchanged so the MCP tool surface (and
 any agent prompt written against it) keeps working.
 """
@@ -53,7 +53,7 @@ def dispatch(request_json, scene, csc, app):
     except Exception:
         response = {
             "status": "error",
-            "message": "malformed poppet request",
+            "message": "malformed cascadeur-mcp request",
             "traceback": traceback.format_exc(),
         }
     try:
@@ -295,7 +295,7 @@ def _d_selection_set(params, scene):
         session.take_selector().select(set(resolved), focus)
 
     # csc.domain.Scene.modify_with_session(str, Callable) -> bool
-    _checked_modify(scene, "Poppet: set selection", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: set selection", mod, session=True)
     return {
         "requested": names,
         "resolved_count": len(resolved),
@@ -310,7 +310,7 @@ def _d_selection_clear(params, scene):
     def mod(model, update, sc, session):
         session.take_selector().select(set(), csc.model.ObjectId.null())
 
-    _checked_modify(scene, "Poppet: clear selection", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: clear selection", mod, session=True)
     return {"cleared": True}
 
 
@@ -484,7 +484,9 @@ def _d_keyframe_set(params, scene):
         except Exception as e:
             _ext_err["value"] = str(e)
 
-    _checked_modify(scene, "Poppet: extend animation for keyframe", _extend_mod, session=True)
+    _checked_modify(
+        scene, "cascadeur-mcp: extend animation for keyframe", _extend_mod, session=True
+    )
 
     actuals_acc = []
     applied = {"position": False, "rotation": False, "frame": frame}
@@ -539,7 +541,7 @@ def _d_keyframe_set(params, scene):
             except Exception as e:
                 applied["run_update_error"] = f"{type(e).__name__}: {e}"
 
-    _checked_modify(scene, "Poppet: set keyframe", mod, update=True)
+    _checked_modify(scene, "cascadeur-mcp: set keyframe", mod, update=True)
     errors = [
         applied[key]
         for key in ("error", "position_error", "rotation_error", "run_update_error")
@@ -717,7 +719,7 @@ def _d_telemetry_read(params, scene):
                 per_frame[str(f)] = entry
             telemetry[label] = per_frame
 
-    _checked_modify(scene, "Poppet: read telemetry", mod, update=True)
+    _checked_modify(scene, "cascadeur-mcp: read telemetry", mod, update=True)
     return {
         "telemetry": telemetry,
         "frames": frames,
@@ -1062,7 +1064,7 @@ def _d_object_transform_get(params, scene):
             except Exception as e:
                 out[label + "_error"] = f"{type(e).__name__}: {e}"
 
-    _checked_modify(scene, "Poppet: read transform", mod, update=True)
+    _checked_modify(scene, "cascadeur-mcp: read transform", mod, update=True)
     return out
 
 
@@ -1105,7 +1107,7 @@ def _d_object_attributes_list(params, scene):
         out["attributes"] = attrs
         out["count"] = len(attrs)
 
-    _checked_modify(scene, "Poppet: read attributes", mod, update=True)
+    _checked_modify(scene, "cascadeur-mcp: read attributes", mod, update=True)
     return out
 
 
@@ -1139,7 +1141,7 @@ def _d_layer_visible_set(params, scene):
         # csc.layers.Editor.set_visible_for_layer(is_v: bool, id: csc.Guid)
         editor.set_visible_for_layer(visible, lid)
 
-    _checked_modify(scene, "Poppet: set layer visible", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: set layer visible", mod, session=True)
     return {
         "layer_id": layer_id_str,
         "visible": visible,
@@ -1163,7 +1165,7 @@ def _d_layer_locked_set(params, scene):
         # csc.layers.Editor.set_locked_for_layer(is_l: bool, id: csc.Guid)
         editor.set_locked_for_layer(locked, lid)
 
-    _checked_modify(scene, "Poppet: set layer locked", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: set layer locked", mod, session=True)
     return {
         "layer_id": layer_id_str,
         "locked": locked,
@@ -1201,7 +1203,7 @@ def _d_object_delete(params, scene):
         scene_updater.generate_update()
         scene_updater.run_update(set(), frame)
 
-    _checked_modify(scene, "Poppet: delete object", mod, update=True)
+    _checked_modify(scene, "cascadeur-mcp: delete object", mod, update=True)
     return {
         "deleted": name,
         "obj_id": _id_str(obj_id),
@@ -1241,7 +1243,9 @@ def _d_object_duplicate(params, scene):
     def _select_for_duplicate(model, update, sc, session):
         session.take_selector().select({obj_id}, obj_id)
 
-    _checked_modify(scene, "Poppet: select for duplicate", _select_for_duplicate, session=True)
+    _checked_modify(
+        scene, "cascadeur-mcp: select for duplicate", _select_for_duplicate, session=True
+    )
 
     app = csc.app.get_application()
     view_scene = app.current_scene()  # csc.app.Application.current_scene()
@@ -1292,7 +1296,7 @@ def _d_object_duplicate(params, scene):
             except Exception:
                 pass
 
-    _checked_modify(scene, "Poppet: duplicate object", mod, session=True, update=True)
+    _checked_modify(scene, "cascadeur-mcp: duplicate object", mod, session=True, update=True)
 
     # Restore the selection the user had before the duplicate.
     try:
@@ -1301,7 +1305,7 @@ def _d_object_duplicate(params, scene):
             focus = previous_ids[0] if previous_ids else csc.model.ObjectId.null()
             session.take_selector().select(set(previous_ids), focus)
 
-        _checked_modify(scene, "Poppet: restore selection", _restore_selection, session=True)
+        _checked_modify(scene, "cascadeur-mcp: restore selection", _restore_selection, session=True)
     except Exception:
         pass
 
@@ -1411,7 +1415,7 @@ def _d_layer_add(params, scene):
         out["layer_id"] = _id_str(new_id)
         out["created"] = True
 
-    _checked_modify(scene, "Poppet: add layer", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: add layer", mod, session=True)
     return out
 
 
@@ -1428,7 +1432,7 @@ def _d_layer_delete(params, scene):
         # csc.layers.Editor.delete_layer(id: csc.Guid)
         model.layers_editor().delete_layer(lid)
 
-    _checked_modify(scene, "Poppet: delete layer", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: delete layer", mod, session=True)
     return {
         "layer_id": layer_id_str,
         "deleted": True,
@@ -1501,7 +1505,7 @@ def _d_selection_filter(params, scene):
     def mod(model, update, sc, session):
         session.take_selector().select(set(matched_ids), focus)
 
-    _checked_modify(scene, "Poppet: selection_filter", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: selection_filter", mod, session=True)
     return {
         "pattern": pattern,
         "mode": mode,
@@ -1585,7 +1589,7 @@ def _d_selection_extend(params, scene):
     def mod(model, update, sc, session):
         session.take_selector().select(new_set, focus)
 
-    _checked_modify(scene, "Poppet: selection_extend", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: selection_extend", mod, session=True)
     return {
         "added": [n for n in names if n not in missing],
         "missing": missing,
@@ -1624,7 +1628,7 @@ def _d_selection_subtract(params, scene):
     def mod(model, update, sc, session):
         session.take_selector().select(new_set, focus)
 
-    _checked_modify(scene, "Poppet: selection_subtract", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: selection_subtract", mod, session=True)
     return {
         "removed": [n for n in names if n not in missing],
         "missing": missing,
@@ -1684,7 +1688,7 @@ def _d_keyframe_add(params, scene):
         # csc.layers.Editor.set_fixed_interpolation_or_key_if_need(Guid, int, bool)
         model.layers_editor().set_fixed_interpolation_or_key_if_need(lid, frame, True)
 
-    _checked_modify(scene, "Poppet: add keyframe", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: add keyframe", mod, session=True)
     return {"layer_id": layer_id_str, "frame": frame, "added": True}
 
 
@@ -1706,7 +1710,7 @@ def _d_keyframe_remove(params, scene):
         # csc.layers.Editor.unset_section(pos: int, id: csc.Guid)
         model.layers_editor().unset_section(frame, lid)
 
-    _checked_modify(scene, "Poppet: remove keyframe", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: remove keyframe", mod, session=True)
     return {"layer_id": layer_id_str, "frame": frame, "removed": True}
 
 
@@ -1754,7 +1758,7 @@ def _d_set_controller_scale(params, scene):
             except Exception:
                 pass
 
-    _checked_modify(scene, "Poppet: extend animation for scale", _extend_mod_s, session=True)
+    _checked_modify(scene, "cascadeur-mcp: extend animation for scale", _extend_mod_s, session=True)
 
     def mod(model, update, scene_updater):
         actuals = set()
@@ -1783,7 +1787,7 @@ def _d_set_controller_scale(params, scene):
             except Exception as e:
                 applied["run_update_error"] = f"{type(e).__name__}: {e}"
 
-    _checked_modify(scene, "Poppet: set scale", mod, update=True)
+    _checked_modify(scene, "cascadeur-mcp: set scale", mod, update=True)
     errors = [applied[key] for key in ("error", "run_update_error") if key in applied]
     if errors:
         raise RuntimeError("; ".join(str(err) for err in errors))
@@ -1818,7 +1822,7 @@ def _d_active_layer_set(params, scene):
         selector = session.take_layers_selector()
         selector.set_full_selection_by_parts([lid], first_frame, last_frame)
 
-    _checked_modify(scene, "Poppet: select layer", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: select layer", mod, session=True)
     return {
         "layer_id": layer_id_str,
         "set": True,
@@ -1861,7 +1865,7 @@ def _d_bake_range(params, scene):
             baked += 1
         out["baked_count"] = baked
 
-    _checked_modify(scene, "Poppet: bake range", mod, session=True)
+    _checked_modify(scene, "cascadeur-mcp: bake range", mod, session=True)
     return out
 
 

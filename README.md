@@ -1,4 +1,4 @@
-# Poppet — Cascadeur MCP
+# cascadeur-mcp — Cascadeur MCP
 
 [![CI](https://github.com/figgiee/poppet/actions/workflows/ci.yml/badge.svg)](https://github.com/figgiee/poppet/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -7,7 +7,7 @@
 [![Version 1.0.0](https://img.shields.io/badge/version-1.0.0-green.svg)](CHANGELOG.md)
 
 Model Context Protocol server for [Cascadeur](https://cascadeur.com/) **2026.2.3+**.
-Poppet gives Claude (or any MCP client) **45 typed tools** for character animation —
+cascadeur-mcp gives Claude (or any MCP client) **45 typed tools** for character animation —
 scene/rig inspection, sparse keyframes, AutoPosing, AutoPhysics, telemetry, layers,
 scene I/O, FBX, viewport capture, escape hatches — and drives Cascadeur through the
 **built-in MCP script server that ships with Cascadeur 2026.2**.
@@ -21,50 +21,50 @@ Requires Cascadeur 2026.2.3+, Python 3.11+ (`uvx` is enough) and an MCP client.
 
 ## Quickstart (three steps)
 
-1. **Install Poppet** in your MCP client's environment:
+1. **Install cascadeur-mcp** in your MCP client's environment:
 
    ```bash
-   uvx poppet-mcp                 # zero-install; or: pip install poppet-mcp
+   uvx cascadeur-mcp                 # zero-install; or: pip install cascadeur-mcp
    ```
 
 2. **In Cascadeur, once per launch:** open a scene, then **Window → Python Console**,
-   paste and Execute the line that `poppet-bootstrap` prints:
+   paste and Execute the line that `cascadeur-bootstrap` prints:
 
    ```bash
-   uvx poppet-bootstrap           # writes the bootstrap file and prints the line
+   uvx cascadeur-bootstrap           # writes the bootstrap file and prints the line
    ```
 
    It looks like:
 
    ```python
-   exec(open(r"C:\Users\<you>\AppData\Local\poppet-mcp\cascadeur_bootstrap.py").read())
+   exec(open(r"C:\Users\<you>\AppData\Local\cascadeur-mcp\cascadeur_bootstrap.py").read())
    ```
 
    Event Log then shows:
 
    ```
-   [Poppet] script server ready at http://127.0.0.1:8765/mcp
-   [Poppet] interpreter keeper installed (10 ms); keep Cascadeur open
+   [cascadeur-mcp] script server ready at http://127.0.0.1:8765/mcp
+   [cascadeur-mcp] interpreter keeper installed (10 ms); keep Cascadeur open
    ```
 
    The same file works after every Cascadeur restart — re-run that one line.
 
-3. **In your MCP client:** register Poppet.
+3. **In your MCP client:** register cascadeur-mcp.
 
    ```bash
-   claude mcp add poppet -- uvx poppet-mcp       # Claude Code
+   claude mcp add cascadeur-mcp -- uvx cascadeur-mcp       # Claude Code
    ```
 
    ```json
    // Claude Desktop — claude_desktop_config.json
-   { "mcpServers": { "poppet": { "command": "uvx", "args": ["poppet-mcp"] } } }
+   { "mcpServers": { "cascadeur-mcp": { "command": "uvx", "args": ["cascadeur-mcp"] } } }
    ```
 
    Cursor / Windsurf / VS Code: [docs/mcp_client_configs.md](docs/mcp_client_configs.md).
 
 No `POPPET_URL` needed: the bootstrap records the chosen port in
-`%LOCALAPPDATA%\poppet-mcp\server.json` and `poppet-mcp` picks it up. Ask "what's in
-my Cascadeur scene?". The **first tool call bootstraps Poppet's ~70 KB in-app
+`%LOCALAPPDATA%\cascadeur-mcp\server.json` and `cascadeur-mcp` picks it up. Ask "what's in
+my Cascadeur scene?". The **first tool call bootstraps cascadeur-mcp's ~70 KB in-app
 runtime** into Cascadeur (slower); later calls are small JSON round trips. Failures:
 [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
@@ -83,9 +83,9 @@ suffice. Details: [docs/architecture.md](docs/architecture.md).
 ## Architecture
 
 ```
-MCP client ──stdio──▶ poppet-mcp ──HTTP 127.0.0.1:<port>──▶ Cascadeur script server
+MCP client ──stdio──▶ cascadeur-mcp ──HTTP 127.0.0.1:<port>──▶ Cascadeur script server
                                                                 │ scene_idle (driven
-                                                                │ by Poppet's 10 ms
+                                                                │ by cascadeur-mcp's 10 ms
                                                                 │ QTimer keeper)
                                                                 ▼
                                                        poppet_rt (in-app runtime)
@@ -96,16 +96,20 @@ MCP client ──stdio──▶ poppet-mcp ──HTTP 127.0.0.1:<port>──▶ 
 
 Cascadeur's script server exposes one primitive: run Python on the next
 `scene_idle`, on the Qt main thread — a safe point for scene mutations. On the first
-call Poppet embeds `src/poppet_mcp/runtime/inapp.py` in a single expression, executes
+call cascadeur-mcp embeds `src/poppet_mcp/runtime/inapp.py` in a single expression, executes
 it inside Cascadeur as private module `poppet_rt`, then sends compact
 `{"command", "params"}` JSON through it. The runtime's SHA-256 is stamped in-app, so
-an upgraded Poppet re-bootstraps automatically instead of using stale handlers.
+an upgraded cascadeur-mcp re-bootstraps automatically instead of using stale handlers.
 
 | Env var | Default | Meaning |
 |---|---|---|
 | `POPPET_URL` | auto-discovered, else `http://127.0.0.1:8765` | Script server base URL. |
 | `POPPET_TIMEOUT` | `35` | Seconds the MCP server waits for a tool response (must stay above Cascadeur's ~30 s cap). |
 | `POPPET_SERVER_PORT` | `8765` | Preferred port the **bootstrap** tries first; it walks upward if taken. |
+
+The `POPPET_*` env names and the `poppet-mcp` / `poppet-bootstrap` console scripts
+are kept as compatibility aliases (the project shipped as *poppet* before this
+release); the Python package is still `poppet_mcp`.
 
 ## Tools (45)
 
@@ -202,7 +206,7 @@ sample scene:
 - `scripts/live_verify.py` — **43/44** end-to-end tool steps passed (the failure is
   the documented `duplicate_object` issue); read + mutation + export + screenshot all
   exercised. Report: [docs/verification/live-verify.json](docs/verification/live-verify.json).
-- `scripts/live_e2e_mcp.py` — full **MCP stdio → poppet-mcp → Cascadeur** path: 45
+- `scripts/live_e2e_mcp.py` — full **MCP stdio → cascadeur-mcp → Cascadeur** path: 45
   tools registered, status/scene/layers/frame/`run_script`/`execute_csc_code` passed.
   Transcript: [docs/verification/live-e2e-mcp.txt](docs/verification/live-e2e-mcp.txt).
 - `python -m pytest tests` — 210 passed, 1 skipped; protocol tests run Cascadeur's
@@ -221,12 +225,12 @@ sample scene:
 ## Migrating from 0.6 (file queue) to 1.0
 
 1. Delete the old Cascadeur-side package (skip if you never used 0.6):
-   `%LOCALAPPDATA%\Nekki Limited\Cascadeur\user_scripts\poppet\` and
+   `%LOCALAPPDATA%\Nekki Limited\Cascadeur\user_scripts\cascadeur-mcp\` and
    `...\user_scripts\poppet_events\`.
-2. Optionally remove Poppet entries from `Python.Path` / `Python.Commands` /
+2. Optionally remove cascadeur-mcp entries from `Python.Path` / `Python.Commands` /
    `Python.Events` in Cascadeur's `settings.json` (harmless if left; no longer used).
    Restart Cascadeur once so the old menu commands disappear.
-3. `uvx poppet-bootstrap` and run the printed line in Cascadeur's Python Console.
+3. `uvx cascadeur-bootstrap` and run the printed line in Cascadeur's Python Console.
 4. Keep your MCP client entry as-is. Tool names/parameters are unchanged; new tools are
    `get_script_server_status` and `run_script`.
 5. Forget the old drain step, focus nudge and queue directories.
@@ -234,13 +238,13 @@ sample scene:
 Cascadeur 2025.3.x users: stay on
 [v0.6.0](https://github.com/figgiee/poppet/releases/tag/v0.6.0).
 
-## Why Poppet?
+## Why cascadeur-mcp?
 
-Cascadeur's built-in server exposes one tool (`run_script`) and two resources. Poppet
+Cascadeur's built-in server exposes one tool (`run_script`) and two resources. cascadeur-mcp
 adds the typed, verified layer: 45 named tools, a live API schema, structured errors,
 and an in-app runtime that keeps handler logic out of prompts. Of the public Cascadeur
 MCP servers surveyed in [docs/research/github-landscape.md](docs/research/github-landscape.md),
-Poppet is the only typed implementation built on the native server (the others ship
+cascadeur-mcp is the only typed implementation built on the native server (the others ship
 their own Cascadeur-side bridges).
 
 ## Docs
@@ -249,4 +253,4 @@ their own Cascadeur-side bridges).
 [docs/architecture.md](docs/architecture.md) ·
 [docs/mcp_client_configs.md](docs/mcp_client_configs.md) ·
 [docs/research/](docs/research/README.md). License: MIT — see [LICENSE](LICENSE).
-Poppet is independent of Nekki; Cascadeur is a trademark of Nekki Limited.
+cascadeur-mcp is independent of Nekki; Cascadeur is a trademark of Nekki Limited.

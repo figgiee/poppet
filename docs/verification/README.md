@@ -34,15 +34,15 @@ false success). Workaround documented in `TROUBLESHOOTING.md`.
 - **File/IO:** `load_scene` (Cascy), `save_scene` (4,068,639-byte .casc),
   `export_fbx` (2,998,416-byte binary FBX), `screenshot_viewport` (2,207,359-byte PNG;
   async render polled by the client).
-- **MCP path:** real stdio handshake (`poppet 1.0.0`), 45 tools listed,
+- **MCP path:** real stdio handshake (`cascadeur-mcp 1.0.0`), 45 tools listed,
   `get_script_server_status`, `get_scene_info`, `list_layers`, `get_current_frame`,
-  `run_script`, `execute_csc_code` all passed through `poppet-mcp`.
+  `run_script`, `execute_csc_code` all passed through `cascadeur-mcp`.
 
 ## Environment note (important for reproducing)
 
 Cascadeur 2026.2.3's built-in script server starves its background HTTP thread while
-the app is idle (the embedded interpreter holds the GIL in the Qt idle loop). Poppet's
-`poppet-bootstrap` console snippet starts the server and installs a 10 ms PySide
+the app is idle (the embedded interpreter holds the GIL in the Qt idle loop). cascadeur-mcp's
+`cascadeur-bootstrap` console snippet starts the server and installs a 10 ms PySide
 `QTimer` that keeps the interpreter ticking and drives `scene_idle`; all live runs
 above were made with that keeper installed. See `docs/architecture.md` and
 `TROUBLESHOOTING.md`.

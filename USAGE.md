@@ -1,14 +1,14 @@
-# Poppet — Usage cookbook (1.0)
+# cascadeur-mcp — Usage cookbook (1.0)
 
 Workflows for driving Cascadeur 2026.2.3+ from Claude (or any MCP client) through
-Poppet. Tool list: [README.md](README.md). Design: [docs/architecture.md](docs/architecture.md).
+cascadeur-mcp. Tool list: [README.md](README.md). Design: [docs/architecture.md](docs/architecture.md).
 
 ## Before you start
 
 Cascadeur 2026.2.3+ with a scene open; **Scripts → MCP → Start script server** started
-(Event Log: `[Cascadeur MCP] listening at http://127.0.0.1:8765/mcp`); Poppet registered
+(Event Log: `[Cascadeur MCP] listening at http://127.0.0.1:8765/mcp`); cascadeur-mcp registered
 in your client ([configs](docs/mcp_client_configs.md)). No Cascadeur-side install, no
-drain step. The first call bootstraps Poppet's ~70 KB in-app runtime (slower); after
+drain step. The first call bootstraps cascadeur-mcp's ~70 KB in-app runtime (slower); after
 that each call is one loopback round trip. Signatures match `src/poppet_mcp/server.py`.
 
 ## First contact
@@ -68,7 +68,7 @@ set_controller_scale(controller_id="chest_Box", frame=12, sx=1, sy=1.1, sz=1)
 add_keyframe(layer_id="<layer id>", frame=12)
 remove_keyframe(layer_id="<layer id>", frame=12)
 
-add_layer(name="Poppet_Bake")        # response includes the new layer id
+add_layer(name="cascadeur-mcp_Bake")        # response includes the new layer id
 bake_range(layer_id="<new id>", frame_start=0, frame_end=60)
 undo()
 redo()
@@ -104,7 +104,7 @@ response — capture depends on the Cascadeur build.
 ## FBX and scene IO
 
 ```text
-export_fbx(path="C:/work/out/poppet_demo.fbx")
+export_fbx(path="C:/work/out/cascadeur-mcp_demo.fbx")
 import_fbx(path="C:/work/in/model.fbx", target="scene")
 import_fbx(path="C:/work/in/anim.fbx", target="animation")
 ```
@@ -117,7 +117,7 @@ retrying. Import semantics are less exercised than export; verify visually.
 
 ### `execute_csc_code` — typed runtime, arbitrary Python
 
-Runs through Poppet's in-app runtime with `csc`, `scene`, `app` in scope. Returns the
+Runs through cascadeur-mcp's in-app runtime with `csc`, `scene`, `app` in scope. Returns the
 expression value (or `None` for statements). Wrap mutations in
 `scene.modify_with_session(...)` to keep undo working.
 
@@ -160,7 +160,7 @@ typed tool. `value` is the repr of the expression; in-app failures return
 ## Long operations and the 30 s cap
 
 Cascadeur's script server waits ~30 s for `scene_idle` and drops requests that miss
-it; handlers that run longer trip Poppet's timeout even though they may still finish
+it; handlers that run longer trip cascadeur-mcp's timeout even though they may still finish
 in-app. So: **chunk** long work (bake 50 frames at a time; read telemetry in ranges),
 **start/poll** rather than block, **checkpoint** with `save_scene`, and treat
 **timeouts as unknown outcomes** — read state back before retrying. Keep
@@ -182,7 +182,7 @@ python -m poppet_mcp.cascadeur_connection
 ```
 
 `ping` goes through the in-app runtime, so success proves the whole chain:
-poppet-mcp → script server → `poppet_rt` → `csc`.
+cascadeur-mcp → script server → `poppet_rt` → `csc`.
 
 ## Cascy controller cheatsheet
 
@@ -201,13 +201,13 @@ completion; most tools need an open scene. Port 8765 busy → see
 
 ## Before you start (2026.2.3)
 
-Cascadeur's built-in script server stalls while the app is idle, so run Poppet's
+Cascadeur's built-in script server stalls while the app is idle, so run cascadeur-mcp's
 bootstrap once per Cascadeur session before using any tool:
 
 ```bash
-uvx poppet-bootstrap     # then paste the printed exec(open(...)) line in
+uvx cascadeur-bootstrap     # then paste the printed exec(open(...)) line in
                          # Cascadeur: Window -> Python Console, Execute
 ```
 
 Open a scene first. The client finds the server port automatically from
-`%LOCALAPPDATA%\poppet-mcp\server.json`; set `POPPET_URL` only to override it.
+`%LOCALAPPDATA%\cascadeur-mcp\server.json`; set `POPPET_URL` only to override it.

@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for Poppet.
+"""Shared pytest fixtures for cascadeur-mcp.
 
 The in-app runtime imports `csc` lazily (inside handler bodies), so we install a
 MagicMock into sys.modules['csc'] BEFORE any test loads the runtime source. That

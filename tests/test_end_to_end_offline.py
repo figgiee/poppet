@@ -30,7 +30,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _scene() -> MagicMock:
-    """csc.domain.Scene-shaped mock with the defaults poppet's handlers read."""
+    """csc.domain.Scene-shaped mock with the defaults cascadeur-mcp's handlers read."""
     scene = MagicMock(name="scene")
     scene.get_current_frame.return_value = 7
     scene.model_viewer.return_value.get_objects.return_value = []

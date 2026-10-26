@@ -1,4 +1,4 @@
-"""Tests for cascadeur_side.poppet._dispatchers._dispatch_legacy() routing layer.
+"""Tests for cascadeur_side.cascadeur-mcp._dispatchers._dispatch_legacy() routing layer.
 
 These exercise the wrapper that maps incoming messages to handlers and
 formats success/error responses. The csc mock from conftest.py is in place

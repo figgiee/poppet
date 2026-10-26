@@ -1,10 +1,10 @@
 """Minimal MCP server smoke test — proves the stdio pipe works.
 
-Spawns the poppet-mcp server as a subprocess via the MCP client SDK's
+Spawns the cascadeur-mcp server as a subprocess via the MCP client SDK's
 stdio_client, initializes the session, lists tools, and exits.
 
 This does NOT call any tool against Cascadeur. It only proves:
-  1. The poppet-mcp console script starts under MCP stdio transport.
+  1. The cascadeur-mcp console script starts under MCP stdio transport.
   2. The MCP handshake completes (initialize message exchange).
   3. All FastMCP @mcp.tool() decorations registered correctly.
 

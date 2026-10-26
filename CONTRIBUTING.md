@@ -1,4 +1,4 @@
-# Contributing to Poppet
+# Contributing to cascadeur-mcp
 
 Thanks for considering a contribution.
 
@@ -6,7 +6,7 @@ Thanks for considering a contribution.
 
 ```powershell
 git clone https://github.com/figgiee/poppet.git
-cd poppet
+cd cascadeur-mcp
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
@@ -113,7 +113,7 @@ Maintainers: tag a release commit on `main`, push the tag, and `release.yml` wil
 build + publish to PyPI and attach artifacts to the GitHub release.
 
 ```bash
-git tag -a v1.0.0 -m "Poppet 1.0.0 — native-script-server runtime"
+git tag -a v1.0.0 -m "cascadeur-mcp 1.0.0 — native-script-server runtime"
 git push origin v1.0.0
 ```
 

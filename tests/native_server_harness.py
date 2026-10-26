@@ -130,7 +130,7 @@ def _install_fake_modules(scene):
 
     ``csc`` is a MagicMock with a real ``MessageLevel`` enum and an ``app``
     submodule whose ``get_application()`` returns a mock application, so real
-    Poppet handlers can be exercised end-to-end: unknown attributes auto-create
+    cascadeur-mcp handlers can be exercised end-to-end: unknown attributes auto-create
     instead of raising AttributeError.
     """
     from unittest.mock import MagicMock

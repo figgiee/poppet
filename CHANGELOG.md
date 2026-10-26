@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Poppet — Cascadeur MCP. Follows
+All notable changes to cascadeur-mcp — Cascadeur MCP. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per
 [SemVer](https://semver.org/).
 
@@ -9,34 +9,41 @@ All notable changes to Poppet — Cascadeur MCP. Follows
 Rebuilt on Cascadeur 2026.2's built-in MCP script server. The Cascadeur-side
 install is gone: no `user_scripts` copy, no `settings.json` Python overrides, no
 menu commands, no request files, no `Process Pending` clicks, no event hooks, and
-no window-focus requirement. `poppet-mcp` now ships its in-app runtime to
+no window-focus requirement. `cascadeur-mcp` now ships its in-app runtime to
 Cascadeur as source text on the first tool call.
 
 ### Changed — breaking
 
 - **Target is now Cascadeur 2026.2.3.** Cascadeur 2025.3.x support ends at
-  poppet 0.6.0 (see the `v0.6.0` tag). The old file-queue transport is removed.
+  cascadeur-mcp 0.6.0 (see the `v0.6.0` tag). The old file-queue transport is removed.
 - **Transport:** stdio MCP → loopback HTTP → Cascadeur's built-in script server
   (`Scripts → MCP → Start script server`, `127.0.0.1:8765`). The first call
   bootstraps `poppet_rt` inside Cascadeur; the module is version-stamped and is
-  re-shipped automatically after a Cascadeur restart or a poppet upgrade.
-- **Uninstall from 0.6:** delete `user_scripts/poppet` and
+  re-shipped automatically after a Cascadeur restart or a cascadeur-mcp upgrade.
+- **Uninstall from 0.6:** delete `user_scripts/cascadeur-mcp` and
   `user_scripts/poppet_events` from Cascadeur's user data directory, and wire the
-  client config with `uvx poppet-mcp` (no Cascadeur-side step).
+  client config with `uvx cascadeur-mcp` (no Cascadeur-side step).
 - **New environment variables:** `POPPET_URL` (default
   `http://127.0.0.1:8765`) and `POPPET_TIMEOUT` (default 35s).
 
+### Changed
+
+- Published as **cascadeur-mcp** (PyPI distribution and `cascadeur-mcp` /
+  `cascadeur-bootstrap` console scripts). The Python module remains `poppet_mcp`;
+  `poppet-mcp` / `poppet-bootstrap` stay as aliases, and the `POPPET_*` env vars
+  keep their names for compatibility.
+
 ### Added
 
-- `poppet-bootstrap` — writes Poppet's Cascadeur-side bootstrap and prints the
+- `cascadeur-bootstrap` — writes cascadeur-mcp's Cascadeur-side bootstrap and prints the
   one-line Python Console command. The bootstrap starts Cascadeur's built-in script
   server on a free port and installs a 10 ms PySide keeper timer that keeps the
   embedded interpreter cycling the GIL and drives `scene_idle`, fixing the 2026.2.3
   stall where the menu-started server is unreachable while Cascadeur is idle.
 - Port auto-discovery: the bootstrap records its port in
-  `%LOCALAPPDATA%\poppet-mcp\server.json`; `poppet-mcp` reads it when `POPPET_URL`
+  `%LOCALAPPDATA%\cascadeur-mcp\server.json`; `cascadeur-mcp` reads it when `POPPET_URL`
   is unset (new `POPPET_SERVER_PORT` env var for the preferred port).
-- `get_script_server_status` — one-call diagnosis of the link between poppet and
+- `get_script_server_status` — one-call diagnosis of the link between cascadeur-mcp and
   Cascadeur (connectivity, script-server version, loaded runtime version,
   embedded Python, whether a scene is open).
 - `run_script` — raw escape hatch that submits Python straight to Cascadeur's
@@ -217,7 +224,7 @@ Cascadeur as source text on the first tool call.
   Removes the per-call manual "Process Pending" click for most workflows.
   `install.ps1`/`install.sh` register the events package via
   `Python.Events` in `settings.json`.
-- **`Commands → Poppet → Status / Drain Dialog`** — opens a `csc.view.DialogManager`
+- **`Commands → cascadeur-mcp → Status / Drain Dialog`** — opens a `csc.view.DialogManager`
   dialog showing queue depth + a one-click drain button + an "Open Queue Dir"
   shortcut. Useful when running without the events handler or for debugging.
 - **11 new dispatcher tools** (also exposed as MCP tools):
@@ -277,9 +284,9 @@ Cascadeur as source text on the first tool call.
 ### Added
 
 - Initial release: file-sync architecture (request/response JSON files in
-  `%LOCALAPPDATA%\poppet-mcp\`), 19 dispatchers, 20 MCP tools, FastMCP
-  stdio server, `Commands → Poppet → Process Pending` drain command,
-  `Commands → Poppet → Refresh Schema`, `csc://schema` MCP resource,
+  `%LOCALAPPDATA%\cascadeur-mcp\`), 19 dispatchers, 20 MCP tools, FastMCP
+  stdio server, `Commands → cascadeur-mcp → Process Pending` drain command,
+  `Commands → cascadeur-mcp → Refresh Schema`, `csc://schema` MCP resource,
   best-effort Windows-API auto-nudge (`_nudge.py`), `install.ps1` +
   `install.sh`, demo scripts (`demo_batch_spec4.py`, `demo_mcp_client.py`,
   `mcp_smoke_test.py`, `poc_client.py`).

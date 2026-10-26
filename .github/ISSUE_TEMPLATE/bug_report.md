@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a bug in Poppet (Cascadeur MCP)
+about: Report a bug in cascadeur-mcp (Cascadeur MCP)
 labels: bug
 ---
 
@@ -12,7 +12,7 @@ labels: bug
 
 1. <!-- Step 1 (e.g., "Started Cascadeur 2025.3.3 with Cascy.casc loaded") -->
 2. <!-- Step 2 (e.g., "Asked Claude: 'set pelvis to (0,0,30) at frame 0'") -->
-3. <!-- What Poppet tool/command was actually invoked, ideally the JSON request -->
+3. <!-- What cascadeur-mcp tool/command was actually invoked, ideally the JSON request -->
 
 ## Expected
 
@@ -25,7 +25,7 @@ labels: bug
 ## Environment
 
 - Cascadeur version: <!-- e.g., 2025.3.3 -->
-- Poppet version: <!-- run: pip show poppet-mcp | grep Version -->
+- cascadeur-mcp version: <!-- run: pip show cascadeur-mcp | grep Version -->
 - OS: <!-- e.g., Windows 11 Pro 23H2 -->
 - Python: <!-- output of `python --version` in the MCP server env -->
 - MCP client: <!-- Claude Code / Claude Desktop / Cursor / other -->
@@ -39,5 +39,5 @@ labels: bug
 ## Dispatcher log
 
 ```text
-<!-- Last ~20 lines of %LOCALAPPDATA%\poppet-mcp\dispatcher.log -->
+<!-- Last ~20 lines of %LOCALAPPDATA%\cascadeur-mcp\dispatcher.log -->
 ```

@@ -1,28 +1,28 @@
 # MCP client configuration snippets
 
-Poppet 1.0 is a **single stdio MCP server** (`poppet-mcp`). There is no
+cascadeur-mcp 1.0 is a **single stdio MCP server** (`cascadeur-mcp`). There is no
 Cascadeur-side install: register the server in your client and start Cascadeur's
 script server (**Scripts → MCP → Start script server**).
 
 Install flavours:
 
-- **uvx** — `uvx poppet-mcp` (needs [uv](https://docs.astral.sh/uv/), no pre-install).
-- **pip** — `pip install poppet-mcp`, then command `poppet-mcp` (or
+- **uvx** — `uvx cascadeur-mcp` (needs [uv](https://docs.astral.sh/uv/), no pre-install).
+- **pip** — `pip install cascadeur-mcp`, then command `cascadeur-mcp` (or
   `python -m poppet_mcp.server`).
 
-The snippets below use uvx; replace `"command": "uvx"` / `"args": ["poppet-mcp"]`
-with `"command": "poppet-mcp"` for a pip install.
+The snippets below use uvx; replace `"command": "uvx"` / `"args": ["cascadeur-mcp"]`
+with `"command": "cascadeur-mcp"` for a pip install.
 
 ## Claude Code (CLI)
 
 ```bash
-claude mcp add poppet -- uvx poppet-mcp
+claude mcp add cascadeur-mcp -- uvx cascadeur-mcp
 ```
 
 Local dev checkout:
 
 ```bash
-claude mcp add poppet -- C:/Users/you/poppet/.venv/Scripts/python.exe -m poppet_mcp.server
+claude mcp add cascadeur-mcp -- C:/Users/you/cascadeur-mcp/.venv/Scripts/python.exe -m poppet_mcp.server
 ```
 
 ## Claude Desktop
@@ -33,7 +33,7 @@ macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "poppet": { "command": "uvx", "args": ["poppet-mcp"] }
+    "cascadeur-mcp": { "command": "uvx", "args": ["cascadeur-mcp"] }
   }
 }
 ```
@@ -45,7 +45,7 @@ macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "poppet": { "command": "uvx", "args": ["poppet-mcp"] }
+    "cascadeur-mcp": { "command": "uvx", "args": ["cascadeur-mcp"] }
   }
 }
 ```
@@ -57,7 +57,7 @@ macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "poppet": { "command": "uvx", "args": ["poppet-mcp"] }
+    "cascadeur-mcp": { "command": "uvx", "args": ["cascadeur-mcp"] }
   }
 }
 ```
@@ -70,7 +70,7 @@ and an explicit `type`:
 ```json
 {
   "servers": {
-    "poppet": { "type": "stdio", "command": "uvx", "args": ["poppet-mcp"] }
+    "cascadeur-mcp": { "type": "stdio", "command": "uvx", "args": ["cascadeur-mcp"] }
   }
 }
 ```
@@ -87,9 +87,9 @@ Set per client in the `env` block:
 ```json
 {
   "mcpServers": {
-    "poppet": {
+    "cascadeur-mcp": {
       "command": "uvx",
-      "args": ["poppet-mcp"],
+      "args": ["cascadeur-mcp"],
       "env": {
         "POPPET_URL": "http://127.0.0.1:8766",
         "POPPET_TIMEOUT": "45"
@@ -103,7 +103,7 @@ Set per client in the `env` block:
 
 1. Cascadeur: **Scripts → MCP → Start script server**; Event Log shows
    `[Cascadeur MCP] listening at http://127.0.0.1:8765/mcp`.
-2. Terminal probe (venv where `poppet-mcp` is installed):
+2. Terminal probe (venv where `cascadeur-mcp` is installed):
 
    ```bash
    python -m poppet_mcp.cascadeur_connection
@@ -113,7 +113,7 @@ Set per client in the `env` block:
 3. MCP client: list tools (45 expected), call `get_script_server_status()` and
    `get_scene_info()`. The first call bootstraps the in-app runtime, so it is slower.
 
-If the client shows no `poppet` server, run the configured command in a terminal —
+If the client shows no `cascadeur-mcp` server, run the configured command in a terminal —
 the traceback there is the real error. See [TROUBLESHOOTING.md](../TROUBLESHOOTING.md).
 
 ## Cascadeur-side prerequisites
@@ -121,12 +121,12 @@ the traceback there is the real error. See [TROUBLESHOOTING.md](../TROUBLESHOOTI
 No Cascadeur-side install is needed, but every Cascadeur session needs the bootstrap:
 
 ```bash
-uvx poppet-bootstrap
+uvx cascadeur-bootstrap
 ```
 
 Paste the printed `exec(open(...))` line into **Window → Python Console** and Execute.
 The bootstrap starts the built-in script server on a free port (8765 by default),
 installs the 10 ms interpreter keeper, and writes the chosen port to
-`%LOCALAPPDATA%\poppet-mcp\server.json`. `poppet-mcp` reads that file, so no
+`%LOCALAPPDATA%\cascadeur-mcp\server.json`. `cascadeur-mcp` reads that file, so no
 `POPPET_URL` is normally required. Set `POPPET_URL` (and `POPPET_SERVER_PORT` before
 bootstrapping) only for custom setups.

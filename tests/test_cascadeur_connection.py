@@ -58,7 +58,7 @@ def test_url_error_is_reported_as_not_running():
     exc = urllib.error.URLError(ConnectionRefusedError(10061, "refused"))
     mapped = connection._describe_url_error(connection.url + "/health", exc)
     assert isinstance(mapped, CascadeurNotRunning)
-    assert "poppet-bootstrap" in str(mapped)
+    assert "cascadeur-bootstrap" in str(mapped)
 
 
 def test_connection_defaults_track_environment(monkeypatch):
@@ -99,6 +99,6 @@ def test_request_raises_script_error_with_traceback(monkeypatch):
 
 
 def test_bootstrap_marker_is_defined_and_used_by_expression():
-    assert _expression.BOOTSTRAP_MARKER.startswith("__poppet")
+    assert _expression.BOOTSTRAP_MARKER.startswith("__cascadeur_mcp")
     expression = _expression.dispatch_expression("{}", source_digest())
     assert _expression.BOOTSTRAP_MARKER in expression

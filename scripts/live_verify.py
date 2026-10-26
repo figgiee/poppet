@@ -9,7 +9,7 @@ Usage::
     python scripts/live_verify.py --url http://127.0.0.1:8766 \\
         --scene "C:/Users/.../samples/Cascy.casc"
 
-Prerequisites: Cascadeur is running with an open scene and Poppet's console
+Prerequisites: Cascadeur is running with an open scene and cascadeur-mcp's console
 bootstrap has started its script server (see README).
 """
 
@@ -111,7 +111,7 @@ def _mutations(connection: CascadeurConnection, names: list[str], layer_ids: lis
         step(connection, "layer_lock", "layer_locked_set", {"layer_id": layer, "locked": True})
         step(connection, "layer_unlock", "layer_locked_set", {"layer_id": layer, "locked": False})
 
-    new_layer = step(connection, "add_layer", "layer_add", {"name": "poppet_live_test"})
+    new_layer = step(connection, "add_layer", "layer_add", {"name": "cascadeur_mcp_live_test"})
     if new_layer and new_layer.get("layer_id"):
         step(
             connection,
@@ -136,19 +136,21 @@ def _mutations(connection: CascadeurConnection, names: list[str], layer_ids: lis
         connection,
         "export_fbx",
         "fbx_export",
-        {"path": "C:/Users/sandv/Desktop/poppet/.live-cascy.fbx"},
+        {"path": "C:/Users/sandv/Desktop/cascadeur-mcp/.live-cascy.fbx"},
     )
     step(
         connection,
         "save_scene_copy",
         "save_scene",
-        {"path": "C:/Users/sandv/Desktop/poppet/.live-cascy-copy.casc"},
+        {"path": "C:/Users/sandv/Desktop/cascadeur-mcp/.live-cascy-copy.casc"},
     )
     step(connection, "undo_after_mutations", "undo", {})
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Live-verify Poppet against Cascadeur 2026.2.3.")
+    parser = argparse.ArgumentParser(
+        description="Live-verify cascadeur-mcp against Cascadeur 2026.2.3."
+    )
     parser.add_argument("--url", default=None)
     parser.add_argument("--scene", default=None, help="Optional .casc file to load before testing")
     parser.add_argument("--report", default="docs/verification/live-verify.json")
@@ -163,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     connection = CascadeurConnection(url=args.url)
-    print(f"Poppet live verification -> {connection.url}\n")
+    print(f"cascadeur-mcp live verification -> {connection.url}\n")
 
     status = step(connection, "ping", "ping")
     if status is None:

@@ -1,4 +1,4 @@
-"""Load Poppet's in-app runtime as an importable module for unit tests.
+"""Load cascadeur-mcp's in-app runtime as an importable module for unit tests.
 
 The runtime is normally shipped to Cascadeur as source text (see
 ``poppet_mcp.runtime``), never imported by the MCP server. Tests execute that

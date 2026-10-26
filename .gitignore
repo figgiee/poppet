@@ -33,4 +33,5 @@ _test_*.pkl
 .live-*\n.console-*\n.uia-*\n
 .probe-*
 .focus-*
-
+# bootstrap fallback dir (sandbox temp mapping)
+cascadeur-mcp/

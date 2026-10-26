@@ -1,4 +1,4 @@
-[10/26/26 15:56:42] INFO     Processing request of type           server.py:727
+[10/26/26 16:07:11] INFO     Processing request of type           server.py:727
                              ListToolsRequest                                  
                     INFO     Processing request of type           server.py:727
                              CallToolRequest                                   
@@ -10,15 +10,15 @@
                              CallToolRequest                                   
                     INFO     Processing request of type           server.py:727
                              CallToolRequest                                   
-[10/26/26 15:56:43] INFO     Processing request of type           server.py:727
+                    INFO     Processing request of type           server.py:727
                              CallToolRequest                                   
-MCP initialize OK: poppet 1.0.0
+MCP initialize OK: cascadeur-mcp 1.0.0
 45 tools registered
 PASS get_script_server_status: {'connected': True, 'url': 'http://127.0.0.1:8766', 'expected_runtime_version': '1.0.0', 'server_version': '0.3.1', 'queued': 0, 'pong': True, 'runtime_version': '1.0.0', 'python':
-PASS get_scene_info: {'has_scene': True, 'current_frame': 5, 'object_count': 289, 'layer_count': 13, 'selection_count': 1, 'scene_name': '.live-cascy-copy.casc'}
+PASS get_scene_info: {'has_scene': True, 'current_frame': 3, 'object_count': 289, 'layer_count': 13, 'selection_count': 0, 'scene_name': '.live-cascy-copy.casc'}
 PASS list_layers: {'layers': [{'id': 'cbba47ba-231d-4765-88e5-25ff633981d5', 'name': 'Arm_R', 'obj_id_count': 12, 'key_frame_count': 4, 'is_visible': True, 'is_locked': False}, {'id': '3cb2a881-2669
-PASS get_current_frame: {'current_frame': 5}
+PASS get_current_frame: {'current_frame': 3}
 PASS run_script: {'ok': True, 'value': '2', 'messages': []}
 PASS execute_csc_code: {'repr': 'None'}
 
-MCP stdio -> poppet-mcp -> Cascadeur end-to-end checks passed
+MCP stdio -> cascadeur-mcp -> Cascadeur end-to-end checks passed

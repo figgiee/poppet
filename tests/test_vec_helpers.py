@@ -1,4 +1,4 @@
-"""Tests for the vec / quaternion helpers in cascadeur_side.poppet._dispatchers."""
+"""Tests for the vec / quaternion helpers in cascadeur_side.cascadeur-mcp._dispatchers."""
 
 from __future__ import annotations
 

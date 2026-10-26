@@ -2,7 +2,7 @@
 
 Cascadeur 2026.2 ships an in-app HTTP server (``Scripts -> MCP -> Start script
 server``) that exposes one primitive: ``run_script`` — execute Python inside the
-running Cascadeur on the next ``scene_idle`` event. That primitive makes Poppet's
+running Cascadeur on the next ``scene_idle`` event. That primitive makes cascadeur-mcp's
 old file-queue transport (and its Cascadeur-side install) unnecessary: the MCP
 server now ships its in-app runtime to Cascadeur as *source text* on the first
 tool call and talks to it over loopback HTTP.
@@ -16,7 +16,7 @@ Cascadeur install:
 ``POST /run`` with ``{"code": "<python>"}``
     Executes the code on the next idle event and returns
     ``{"ok": bool, "value": str, "messages": [...], "error": str?}``.
-    The server compiles ``code`` with ``mode="eval"`` first, so Poppet submits a
+    The server compiles ``code`` with ``mode="eval"`` first, so cascadeur-mcp submits a
     single expression (see ``_expression.py``) and reads the result out of
     ``value``.
 
@@ -40,37 +40,40 @@ from poppet_mcp.runtime import load_source as load_runtime_source
 from poppet_mcp.runtime import runtime_version, source_digest
 
 DEFAULT_URL = "http://127.0.0.1:8765"
-STATE_DIR_NAME = "poppet-mcp"
+STATE_DIR_NAME = "cascadeur-mcp"
 DEFAULT_TIMEOUT = 35.0
 
 _NOT_RUNNING_HINT = (
     "Cascadeur's built-in script server is not reachable at {url}.\n"
-    "Run Poppet's Cascadeur-side bootstrap once per Cascadeur session:\n"
-    "  poppet-bootstrap        (prints the Python Console line to paste)\n"
+    "Run cascadeur-mcp's Cascadeur-side bootstrap once per Cascadeur session:\n"
+    "  cascadeur-bootstrap        (prints the Python Console line to paste)\n"
     "It starts the server and keeps Cascadeur's interpreter ticking; without it,\n"
     "Cascadeur 2026.2's server thread starves while the app is idle."
 )
 
 _PORT_CONFLICT_HINT = (
     "Something other than Cascadeur's script server answered at {url}. Another "
-    "program is holding that port; run poppet-bootstrap, which picks the next "
-    "free port and writes %LOCALAPPDATA%\\poppet-mcp\\server.json so the client "
+    "program is holding that port; run cascadeur-bootstrap, which picks the next "
+    "free port and writes %LOCALAPPDATA%\\cascadeur-mcp\\server.json so the client "
     "finds it automatically."
 )
 
 
 def _discovered_url() -> str | None:
-    """Read the port chosen by poppet-bootstrap's ``server.json``, if present."""
+    """Read the port chosen by cascadeur-bootstrap's ``server.json``, if present."""
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    path = os.path.join(base, STATE_DIR_NAME, "server.json")
-    try:
-        with open(path, encoding="utf-8") as handle:
-            data = json.load(handle)
-        port = int(data.get("port"))
-        if 0 < port < 65536:
-            return f"http://127.0.0.1:{port}"
-    except Exception:
-        return None
+    # "poppet-mcp" is the pre-rename state directory; honour it so upgrades keep
+    # working without re-running the bootstrap.
+    for dir_name in (STATE_DIR_NAME, "poppet-mcp"):
+        path = os.path.join(base, dir_name, "server.json")
+        try:
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+            port = int(data.get("port"))
+            if 0 < port < 65536:
+                return f"http://127.0.0.1:{port}"
+        except Exception:
+            continue
     return None
 
 
@@ -100,7 +103,7 @@ class CascadeurScriptError(CascadeurConnectionError):
 
 
 class CascadeurProtocolError(CascadeurConnectionError):
-    """The server answered, but not with the protocol Poppet expects."""
+    """The server answered, but not with the protocol cascadeur-mcp expects."""
 
 
 def _opener() -> urllib.request.OpenerDirector:
@@ -169,7 +172,7 @@ class CascadeurConnection:
         )
 
     def request(self, command: str, params: dict[str, Any] | None = None) -> Any:
-        """Dispatch one Poppet command through the in-app runtime."""
+        """Dispatch one cascadeur-mcp command through the in-app runtime."""
         request_json = json.dumps({"command": command, "params": params or {}}, ensure_ascii=False)
         payload = self._dispatch(request_json)
         if isinstance(payload, dict) and payload.get(_expression.BOOTSTRAP_MARKER):

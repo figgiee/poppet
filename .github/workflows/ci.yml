@@ -73,7 +73,7 @@ jobs:
       - name: Install package
         run: pip install -e .
 
-      # Boots poppet-mcp over stdio, completes the MCP handshake, lists tools +
+      # Boots cascadeur-mcp over stdio, completes the MCP handshake, lists tools +
       # resources, then exits. POPPET_LIVE stays unset, so no Cascadeur
       # connection is attempted.
       - name: Smoke test MCP server

@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/poppet-mcp/
+      url: https://pypi.org/project/cascadeur-mcp/
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -80,7 +80,7 @@ jobs:
           ' CHANGELOG.md > release_notes.md
           if [ ! -s release_notes.md ]; then
             echo "No CHANGELOG entry for $VERSION — using a generic message."
-            echo "Poppet $VERSION." > release_notes.md
+            echo "cascadeur-mcp $VERSION." > release_notes.md
           fi
       - name: Attach artifacts to GitHub release
         uses: softprops/action-gh-release@v2
@@ -88,5 +88,5 @@ jobs:
           files: dist/*
           body_path: release_notes.md
           tag_name: ${{ github.ref_name }}
-          name: Poppet ${{ github.ref_name }}
+          name: cascadeur-mcp ${{ github.ref_name }}
           generate_release_notes: false

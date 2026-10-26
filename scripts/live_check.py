@@ -34,14 +34,16 @@ def _summarize(result: object, limit: int = 240) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Verify Poppet against a running Cascadeur.")
+    parser = argparse.ArgumentParser(
+        description="Verify cascadeur-mcp against a running Cascadeur."
+    )
     parser.add_argument(
         "--url", default=None, help="Script-server URL (default: POPPET_URL or 127.0.0.1:8765)"
     )
     args = parser.parse_args(argv)
 
     connection = CascadeurConnection(url=args.url)
-    print(f"Poppet live check -> {connection.url}\n")
+    print(f"cascadeur-mcp live check -> {connection.url}\n")
 
     checks: list[tuple[str, callable]] = [
         ("health", connection.health),

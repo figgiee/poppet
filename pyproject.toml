@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "poppet-mcp"
+name = "cascadeur-mcp"
 version = "1.0.0"
 description = "Typed MCP tool layer for Cascadeur 2026.2+ — drives the built-in MCP script server with a shipped in-app runtime, so there is nothing to install inside Cascadeur."
 readme = "README.md"
@@ -32,6 +32,9 @@ dev = [
 ]
 
 [project.scripts]
+cascadeur-mcp = "poppet_mcp.server:main"
+cascadeur-bootstrap = "poppet_mcp.bootstrap_cli:main"
+# Legacy aliases (the project shipped as poppet-mcp before the rename).
 poppet-mcp = "poppet_mcp.server:main"
 poppet-bootstrap = "poppet_mcp.bootstrap_cli:main"
 
@@ -59,7 +62,7 @@ include = [
 [tool.ruff]
 line-length = 100
 # Both the MCP server and the in-app runtime execute on Python 3.11+:
-# the MCP server runs wherever the user installed poppet, and Cascadeur
+# the MCP server runs wherever the user installed cascadeur-mcp, and Cascadeur
 # 2026.2's embedded interpreter is CPython 3.11 (`python311.dll`).
 target-version = "py311"
 

@@ -1,9 +1,9 @@
-"""``poppet-bootstrap`` console command.
+"""``cascadeur-bootstrap`` console command.
 
-Writes Poppet's Cascadeur-side bootstrap file to a stable location and prints the
+Writes cascadeur-mcp's Cascadeur-side bootstrap file to a stable location and prints the
 single line to paste into Cascadeur's Python Console. Cascadeur 2026.2's built-in
 script server starves its own background thread while the application is idle, so
-this bootstrap (which installs a tiny PySide timer) is how Poppet gets a
+this bootstrap (which installs a tiny PySide timer) is how cascadeur-mcp gets a
 responsive server without a Cascadeur-side install.
 """
 
@@ -22,7 +22,7 @@ DEFAULT_PORT = 8765
 
 def _default_target() -> Path:
     base = os.environ.get("LOCALAPPDATA") or str(Path.home())
-    return Path(base) / "poppet-mcp" / SOURCE_NAME
+    return Path(base) / "cascadeur-mcp" / SOURCE_NAME
 
 
 def _load_source() -> str:
@@ -31,8 +31,8 @@ def _load_source() -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="poppet-bootstrap",
-        description="Write Poppet's Cascadeur bootstrap and print the console line to run.",
+        prog="cascadeur-bootstrap",
+        description="Write cascadeur-mcp's Cascadeur bootstrap and print the console line to run.",
     )
     parser.add_argument(
         "--port", type=int, default=DEFAULT_PORT, help="Preferred script-server port."
@@ -58,22 +58,22 @@ def main(argv: list[str] | None = None) -> int:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(source, encoding="utf-8")
         except OSError as exc:
-            fallback = Path(tempfile.gettempdir()) / "poppet-mcp" / SOURCE_NAME
+            fallback = Path(tempfile.gettempdir()) / "cascadeur-mcp" / SOURCE_NAME
             fallback.parent.mkdir(parents=True, exist_ok=True)
             fallback.write_text(source, encoding="utf-8")
             print(f"could not write {target} ({exc}); using {fallback}", file=sys.stderr)
             target = fallback
-        print(f"Poppet bootstrap written to: {target}")
+        print(f"cascadeur-mcp bootstrap written to: {target}")
 
     print()
     print("In Cascadeur 2026.2.3: Window -> Python Console, paste this line and press Execute:")
     print(f'exec(open(r"{target}").read())')
     print()
     print("Expected Event Log lines:")
-    print("  [Poppet] script server ready at http://127.0.0.1:<port>/mcp")
-    print("  [Poppet] interpreter keeper installed (10 ms); keep Cascadeur open")
+    print("  [cascadeur-mcp] script server ready at http://127.0.0.1:<port>/mcp")
+    print("  [cascadeur-mcp] interpreter keeper installed (10 ms); keep Cascadeur open")
     print()
-    print("The bootstrap writes %LOCALAPPDATA%\\poppet-mcp\\server.json, so poppet-mcp")
+    print("The bootstrap writes %LOCALAPPDATA%\\cascadeur-mcp\\server.json, so cascadeur-mcp")
     print("finds the port automatically. Re-run it after restarting Cascadeur.")
     return 0
 

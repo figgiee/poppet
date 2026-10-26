@@ -3,7 +3,7 @@
 The harness loads the real ``scripts/mcp/script_server/server.py`` from the local
 Cascadeur 2026.2 install, substitutes small fakes for ``csc``/``events``, and
 drives the server's ``scene_idle`` subscription from a thread. That exercises the
-actual protocol peer Poppet talks to in production — without the GUI.
+actual protocol peer cascadeur-mcp talks to in production — without the GUI.
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ def test_connection_refused_is_actionable():
     connection = CascadeurConnection(url=f"http://127.0.0.1:{port}", timeout=1.0)
     with pytest.raises(CascadeurNotRunning) as excinfo:
         connection.health()
-    assert "poppet-bootstrap" in str(excinfo.value)
+    assert "cascadeur-bootstrap" in str(excinfo.value)
 
 
 def test_port_conflict_is_diagnosed():

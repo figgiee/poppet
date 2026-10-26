@@ -1,4 +1,4 @@
-"""Tests for Poppet's Cascadeur-side bootstrap and port discovery."""
+"""Tests for cascadeur-mcp's Cascadeur-side bootstrap and port discovery."""
 
 from __future__ import annotations
 

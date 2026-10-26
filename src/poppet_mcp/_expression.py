@@ -10,8 +10,8 @@ expression** if we want data back.
 We therefore wrap arbitrarily large multi-statement programs in a lambda that
 ``exec``s them in a private namespace and yields a result variable::
 
-    (lambda __ns__: (exec(compile(<source>, "<poppet>", "exec"), __ns__),
-                     __ns__.get("__poppet_result__"))[1])(
+    (lambda __ns__: (exec(compile(<source>, "<cascadeur-mcp>", "exec"), __ns__),
+                     __ns__.get("__cascadeur_mcp_result__"))[1])(
         {"csc": csc, "scene": scene, "app": app})
 
 ``csc``, ``scene`` and ``app`` come from the namespace the script server already
@@ -23,7 +23,7 @@ The submitted program itself runs in two modes:
   module is already loaded and its source digest matches the source this client
   ships.
 * **bootstrap** (first call, after a Cascadeur restart, or after upgrading
-  poppet) — execute the runtime source into a fresh ``poppet_rt`` module in
+  cascadeur-mcp) — execute the runtime source into a fresh ``poppet_rt`` module in
   ``sys.modules``, stamp its source digest, then dispatch.
 
 The digest doubles as the wire-contract identity: a Cascadeur process holding an
@@ -34,9 +34,9 @@ only trusts a module whose stamped digest matches the source it would ship.
 from __future__ import annotations
 
 RUNTIME_MODULE = "poppet_rt"
-RESULT_VAR = "__poppet_result__"
+RESULT_VAR = "__cascadeur_mcp_result__"
 DIGEST_ATTR = "SOURCE_DIGEST"
-BOOTSTRAP_MARKER = "__poppet_bootstrap_required__"
+BOOTSTRAP_MARKER = "__cascadeur_mcp_bootstrap_required__"
 
 
 def wrap_expression(source: str) -> str:
@@ -44,7 +44,7 @@ def wrap_expression(source: str) -> str:
     return (
         "(lambda __ns__: (exec(compile("
         + repr(source)
-        + ', "<poppet>", "exec"), __ns__), __ns__.get("'
+        + ', "<cascadeur-mcp>", "exec"), __ns__), __ns__.get("'
         + RESULT_VAR
         + '"))[1])('
         + '{"csc": csc, "scene": scene, "app": app})'

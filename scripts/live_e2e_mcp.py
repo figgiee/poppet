@@ -1,8 +1,8 @@
 """Live end-to-end test through the real MCP stdio transport.
 
-Spawns ``poppet-mcp`` exactly as a client would, performs the MCP handshake,
+Spawns ``cascadeur-mcp`` exactly as a client would, performs the MCP handshake,
 lists tools, and calls a handful of tools that reach the running Cascadeur.
-Requires Cascadeur 2026.2.3 with Poppet's console bootstrap active.
+Requires Cascadeur 2026.2.3 with cascadeur-mcp's console bootstrap active.
 
 Usage::
 
@@ -52,6 +52,11 @@ async def run() -> int:
                 nonlocal failures
                 try:
                     result = await session.call_tool(tool, args or {})
+                    if result.isError:
+                        failures += 1
+                        detail = result.content[0].text if result.content else "unknown error"
+                        print(f"FAIL {tool}: {detail[:300]}")
+                        return None
                     text = result.content[0].text if result.content else ""
                     parsed = json.loads(text) if text.startswith(("{", "[")) else text
                     print(f"PASS {tool}: {str(parsed)[:180]}")
@@ -72,7 +77,7 @@ async def run() -> int:
     if failures:
         print(f"{failures} MCP end-to-end check(s) failed")
         return 1
-    print("MCP stdio -> poppet-mcp -> Cascadeur end-to-end checks passed")
+    print("MCP stdio -> cascadeur-mcp -> Cascadeur end-to-end checks passed")
     return 0
 
 

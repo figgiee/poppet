@@ -1,7 +1,7 @@
-"""Poppet MCP server — the tool layer for Cascadeur 2026.2+.
+"""cascadeur-mcp MCP server — the tool layer for Cascadeur 2026.2+.
 
-Runs as a normal stdio MCP server (``poppet-mcp``) next to any MCP client. Every
-tool call is translated into a JSON command and handed to Poppet's in-app runtime
+Runs as a normal stdio MCP server (``cascadeur-mcp``) next to any MCP client. Every
+tool call is translated into a JSON command and handed to cascadeur-mcp's in-app runtime
 running inside Cascadeur, via Cascadeur's **built-in** MCP script server
 (``Scripts -> MCP -> Start script server``, loopback HTTP on port 8765).
 
@@ -25,7 +25,7 @@ from poppet_mcp import __version__
 from poppet_mcp.cascadeur_connection import CascadeurConnection
 from poppet_mcp.runtime import runtime_version
 
-mcp = FastMCP("poppet")
+mcp = FastMCP("cascadeur-mcp")
 # Report the real package version in the MCP handshake when the SDK allows it.
 try:  # pragma: no cover - depends on the installed MCP SDK internals
     mcp._mcp_server.version = __version__
@@ -56,7 +56,7 @@ def _call(command: str, **params: Any) -> Any:
 
 @mcp.tool()
 def get_script_server_status() -> dict:
-    """Check the Poppet <-> Cascadeur link and report both sides' versions.
+    """Check the cascadeur-mcp <-> Cascadeur link and report both sides' versions.
 
     Returns ``connected`` (bool), the loopback ``url``, the script server's
     ``server_version``, the loaded in-app ``runtime_version``, the embedded
@@ -175,7 +175,7 @@ def call_action(action_id: str) -> dict:
 def execute_csc_code(code: str) -> dict:
     """Execute Python in Cascadeur's embedded interpreter (typed escape hatch).
 
-    Runs through Poppet's in-app runtime, so ``csc`` and ``scene`` are available.
+    Runs through cascadeur-mcp's in-app runtime, so ``csc`` and ``scene`` are available.
     Returns the expression value (or ``None`` for statements). Prefer ``run_script``
     if you want the script server's raw response instead, and wrap mutations in
     ``scene.modify_with_session(...)`` to keep undo working.
@@ -462,7 +462,7 @@ def delete_layer(layer_id: str) -> dict:
 def get_active_layer() -> dict:
     """Return the timeline layer selection (layer-editor semantics).
 
-    Cascadeur 2026.2 has no separate "active editing layer" object; Poppet maps
+    Cascadeur 2026.2 has no separate "active editing layer" object; cascadeur-mcp maps
     this tool to the timeline layers selection: the included layer ids plus the
     top layer. Responses carry ``"semantics": "timeline-layer-selection"`` with
     layer ids, names and key counts.
@@ -577,7 +577,7 @@ def screenshot_viewport(path: str | None = None, wait_sec: float = 10.0) -> dict
 def csc_schema() -> str:
     """Live ``csc.*`` API surface from the running Cascadeur, as JSON.
 
-    Dumped by Poppet's in-app runtime at read time, so it matches the exact
+    Dumped by cascadeur-mcp's in-app runtime at read time, so it matches the exact
     Cascadeur version you are driving — use it as ground truth for any
     ``execute_csc_code`` / ``run_script`` work.
     """

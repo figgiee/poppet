@@ -1,7 +1,7 @@
-# Cascadeur MCP landscape — public implementations vs. poppet
+# Cascadeur MCP landscape — public implementations vs. cascadeur-mcp
 
 Snapshot date: **2026-10-26**. Research-only survey of every public Cascadeur MCP
-implementation found, plus the vendor's built-in server, compared against poppet's
+implementation found, plus the vendor's built-in server, compared against cascadeur-mcp's
 current design and re-evaluated against the fact that Cascadeur **2026.2 now ships a
 built-in MCP script server**.
 
@@ -19,12 +19,12 @@ public wrapper of native `8765` besides Karylcode. Stars/dates as of 2026-10-26.
 | Implementation | Transport | How code reaches Cascadeur | Tool inventory | Targeted version | Activity | Verdict |
 |---|---|---|---|---|---|---|
 | **Cascadeur built-in script server** (vendor) | HTTP JSON-RPC subset on `127.0.0.1:8765`: `GET /health`, `POST /run`, `POST /mcp` | Ship-in: `Scripts → MCP → Start script server`; scripts run on next `scene_idle` with `csc`/`scene`/`app` in scope | **1 tool** (`run_script(code)`) + 2 resources (`cascadeur://docs/python-api`, `cascadeur://modules`); protocol string `2024-11-05` | 2026.2+ (installed 2026.2.3, server v0.3.1) | Vendor product, first shipped Aug 2026 | **Substrate.** Raw Python execution only: no typed tools, no auth, 30 s cap. Every 2026.2-era server sits on it (or bypasses it). |
-| **poppet** — [figgiee/poppet](https://github.com/figgiee/poppet) | MCP **stdio** (FastMCP) + file queue (`request<uuid>.json`/`response<uuid>.json`) | Cascadeur-side `user_scripts` install; queue drained on `scene_activated`/`scene_opened` or `Commands → Poppet → Process Pending` | **43 tools + 1 resource** (scene/rig/keys/telemetry/AutoPosing/AutoPhysics/FBX/layers/export/selection/undo…) | **2025.3.3** (public snapshot) | 0★, 0 forks; created 2026-05-24, last push **2026-05-25** (pre-2026.2) | **Differentiated but stale.** Deepest verified `csc` coverage in the field; transport obsolete since the native server shipped. Must re-target 2026.2 or die. |
+| **cascadeur-mcp** — [figgiee/poppet](https://github.com/figgiee/poppet) | MCP **stdio** (FastMCP) + file queue (`request<uuid>.json`/`response<uuid>.json`) | Cascadeur-side `user_scripts` install; queue drained on `scene_activated`/`scene_opened` or `Commands → cascadeur-mcp → Process Pending` | **43 tools + 1 resource** (scene/rig/keys/telemetry/AutoPosing/AutoPhysics/FBX/layers/export/selection/undo…) | **2025.3.3** (public snapshot) | 0★, 0 forks; created 2026-05-24, last push **2026-05-25** (pre-2026.2) | **Differentiated but stale.** Deepest verified `csc` coverage in the field; transport obsolete since the native server shipped. Must re-target 2026.2 or die. |
 | [gprethesh/cascadeur-mcp](https://github.com/gprethesh/cascadeur-mcp) | MCP stdio → local JSON mailbox | User runs generated `start_bridge.py` in `Window → Python Console`; a **Qt timer** executes one request at a time on the main thread. Explicitly says **do not start** the built-in MCP server | **36 tools + optional 37th** (`cascadeur_run_script` behind `--allow-scripts`): scenes/projects, rigs/objects, body+finger poses, keys/interpolation, track/frame selection, motion sampling, camera/PNG review, FBX import/export, action catalog (physics/AutoPosing/retargeting/cycles), API discovery | App reporting `inHouse`/API `dev`; requires `PySide6`, i.e. **2026.2-era** (exact version UNVERIFIED) | 7★, 4 forks; created **2026-09-15**, pushed **2026-09-15** | **Strongest competitor on breadth.** macOS-tested, image review via MCP, native-server rejection; per-launch console bootstrap is a UX tax. |
 | [MnxD2A6/cascadeur-mcp](https://github.com/MnxD2A6/cascadeur-mcp) | MCP stdio (official MCP Python SDK v1) → private local JSON queue (`%LOCALAPPDATA%\cascadeur-mcp\c01`, ACL-restricted) | `python -m cascadeur_mcp.manage install-host --cascadeur-home … --apply` installs a **startup host hook** that schedules the bridge on Cascadeur's Qt main thread | **37 tools**: capability/ping/scene/object/frame/character/skeleton/rig reads; transform, pose, pose-sequence, hand/finger, keyframe/retiming, playback, snapshot/recovery writes; scene-copy save, license-checked FBX export, preflight/recovery diagnostics | **Cascadeur 2026.2.2**, Windows, Python 3.12 (dev machine only) | 1★, 0 forks; created 2026-09-29, pushed **2026-10-09** | **Deepest safety engineering.** Alpha (`0.5.0a13`), allowlist, no arbitrary Python, write-contract revisions, rollback/recovery. Deliberately not built on the native server. |
-| [Karylcode/cascadeur-mcp-plus](https://github.com/Karylcode/cascadeur-mcp-plus) | MCP stdio proxy (stdlib) → **in-app HTTP server** `127.0.0.1:48766` (`POST /mcp`, `GET /health`); **native `8765` `/run` only bootstraps** the in-app server | Proxy starts `start_mcp_plus.py` through native `/run` on first call; in-app server runs on bundled **PySide6**, `QTimer` every 25 ms on the GUI thread, scene-idle for rig/import tools | **27 tools**: 23 grouped-action tools (`scene`, `import_export`, `characters`, `selection`, `rigging`, `pose`, `autoposing`, `timeline`, `keys`, `layers`, `physics`, `cleanup`, `ai_motion`, `render`, `camera`, `display`, `ui_inspect`, `ui_input`, `actions`, `history`, `jobs`, `status`, …) + `run_python`, `batch`, `screenshot`, `video_mocap` | **Cascadeur 2026.2** (tested **2026.2.3**), Windows 10/11 | 1★, 0 forks; created **2026-10-23**, pushed **2026-10-25** (newest) | **Closest to poppet's future shape.** Typed tools on the native server, but still needs Cascadeur-side code + a second in-app HTTP server; UI automation/render/video differentiate. |
+| [Karylcode/cascadeur-mcp-plus](https://github.com/Karylcode/cascadeur-mcp-plus) | MCP stdio proxy (stdlib) → **in-app HTTP server** `127.0.0.1:48766` (`POST /mcp`, `GET /health`); **native `8765` `/run` only bootstraps** the in-app server | Proxy starts `start_mcp_plus.py` through native `/run` on first call; in-app server runs on bundled **PySide6**, `QTimer` every 25 ms on the GUI thread, scene-idle for rig/import tools | **27 tools**: 23 grouped-action tools (`scene`, `import_export`, `characters`, `selection`, `rigging`, `pose`, `autoposing`, `timeline`, `keys`, `layers`, `physics`, `cleanup`, `ai_motion`, `render`, `camera`, `display`, `ui_inspect`, `ui_input`, `actions`, `history`, `jobs`, `status`, …) + `run_python`, `batch`, `screenshot`, `video_mocap` | **Cascadeur 2026.2** (tested **2026.2.3**), Windows 10/11 | 1★, 0 forks; created **2026-10-23**, pushed **2026-10-25** (newest) | **Closest to cascadeur-mcp's future shape.** Typed tools on the native server, but still needs Cascadeur-side code + a second in-app HTTP server; UI automation/render/video differentiate. |
 | [BrianFinch-1/cascadeur-codex-bridge](https://github.com/BrianFinch-1/cascadeur-codex-bridge) | MCP stdio (dependency-free Node.js 18+) → authenticated Python bridge daemon → Python 3.11 agent on Cascadeur main thread | Install scripts / ready-made Windows ZIPs; agent runs in-app; `readonly` vs `standard` security profiles | Tool count **UNVERIFIED**; documented groups: scene inspection, MMD character analysis (VMD dry-run), Outline hierarchy editing, viewport capture, guarded scene edits with dry-run/commit, diagnostics; **no arbitrary Python** | **Cascadeur 2026.2+**, Windows 10/11 | 2★, 0 forks; created 2026-09-12, pushed **2026-10-18** | **Niche but productized** (ZIP releases, SHA256SUMS, policy profiles). MMD/Codex focus; heavy Node+daemon+agent stack. |
-| [muhwagwa0112/cascadeur-complete](https://github.com/muhwagwa0112/cascadeur-complete) | MCP stdio + LocalAppData queue + hidden Win32 message-window/timer **UI-thread pump**, falling back to UI Automation `Process Pending` | In-app Python command package (bundled Python 3.12); installer updates `Python.Path`/commands; pump claims requests without foregrounding Cascadeur | Tool count **UNVERIFIED**; documented: mocap cleanup (`motion_cleanup_analyze`/`prepare`, `mesh_sample`, `change_commit`), hand/wrist styling, `cascadeur_status`, guarded writes; arbitrary dev Python disabled | **Cascadeur 2026.1.3.0.15619** (exact baseline), Windows | 1★, 5 open issues; created 2026-08-20, pushed **2026-10-16** | **Pre-native architecture** (2026.1.3 has no native server). Mocap-cleanup workflow is a real niche; its README names Poppet as neither modified nor required. |
+| [muhwagwa0112/cascadeur-complete](https://github.com/muhwagwa0112/cascadeur-complete) | MCP stdio + LocalAppData queue + hidden Win32 message-window/timer **UI-thread pump**, falling back to UI Automation `Process Pending` | In-app Python command package (bundled Python 3.12); installer updates `Python.Path`/commands; pump claims requests without foregrounding Cascadeur | Tool count **UNVERIFIED**; documented: mocap cleanup (`motion_cleanup_analyze`/`prepare`, `mesh_sample`, `change_commit`), hand/wrist styling, `cascadeur_status`, guarded writes; arbitrary dev Python disabled | **Cascadeur 2026.1.3.0.15619** (exact baseline), Windows | 1★, 5 open issues; created 2026-08-20, pushed **2026-10-16** | **Pre-native architecture** (2026.1.3 has no native server). Mocap-cleanup workflow is a real niche; its README names cascadeur-mcp as neither modified nor required. |
 | [ysk424/cascadeur-mcp](https://github.com/ysk424/cascadeur-mcp) | MCP stdio (FastMCP) + **per-call app launch**: localhost TCP server + `cascadeur.exe --run-script commands.externals.csc_mcp_exec` | Installs `csc_mcp_exec.py` under `.../commands/externals/`; callback runs on main thread, then the app exits | **5 tools**: `execute_cascadeur_code`, `get_scene_info`, `capture_viewport`, `export_fbx`, `import_fbx` | Cascadeur **2026** (`FbxSceneLoader` verified) | 0★, 2 forks; created+pushed **2026-06-16**; **no license** | **Superseded.** Per-call launch latency, tiny surface, no license; its own roadmap deferred AutoPhysics/AutoPosing as R&D. |
 | [BYGGOLDENSTONE/cascadeur-mcp-bridge](https://github.com/BYGGOLDENSTONE/cascadeur-mcp-bridge) | **Not MCP** — JSON file command/response driver (`io/casc_cmd.json` ↔ `io/casc_resp.json`) | Menu command `Commands → MCP → Start Bridge` runs a foreground polling loop on main thread (UI freezes); `py` op = arbitrary `csc` code | **8 ops**: `ping`, `info`, `get_frame`, `set_frame`, `add_camera`, `fix_preset`, `py`, `stop` | **Cascadeur 2026.1.2**, Windows | 0★; created+pushed **2026-06-26** | **Obsolete.** Native `/run` provides main-thread code execution without the freeze; no MCP layer. |
 | [Late-bloomer420/cascadeur-mcp](https://github.com/Late-bloomer420/cascadeur-mcp) | Unknown | Unknown | None documented | Unknown | 0★; created+pushed **2026-09-14**; no license | **Stub.** One-line README; no implementation evidence. Ignore. |
@@ -65,22 +65,22 @@ public wrapper of native `8765` besides Karylcode. Stars/dates as of 2026-10-26.
   operations, or connect to typical MCP clients that expect stdio/Streamable HTTP.
   Those gaps are the entire market for the projects below.
 
-### 2. poppet (figgiee/poppet) — our project
+### 2. cascadeur-mcp (figgiee/poppet) — our project
 
 - Public repo: MIT, 0★/0 forks, created 2026-05-24, last push **2026-05-25**, 176 KB,
   Python. The public snapshot predates 2026.2 by ~3 months.
 - Current design (local README + `docs/architecture.md`): MCP stdio FastMCP host process
   + **43 tools + 1 resource**; Cascadeur-side package in `user_scripts/`; file queue in
-  `%LOCALAPPDATA%\poppet-mcp\`; auto-drain via `scene_activated`/`scene_opened` event
-  hooks plus best-effort `SetForegroundWindow` nudge; `Commands → Poppet → Process
+  `%LOCALAPPDATA%\cascadeur-mcp\`; auto-drain via `scene_activated`/`scene_opened` event
+  hooks plus best-effort `SetForegroundWindow` nudge; `Commands → cascadeur-mcp → Process
   Pending` fallback. Target **Cascadeur 2025.3.3**.
 - The 2025.3.3 constraints in `docs/architecture.md` (no PySide, no `csc` main-thread
   scheduler, starved background threads) **no longer hold on 2026.2**: release notes/AWN
   add PySide/QML UI scripting, and the native server itself runs a Python HTTP server +
-  `scene_idle` subscription inside Cascadeur. poppet's own doc predicted the pivot
+  `scene_idle` subscription inside Cascadeur. cascadeur-mcp's own doc predicted the pivot
   condition: *"If a future Cascadeur version ships PySide or exposes a main-thread
   scheduler, the socket design becomes viable."* That version has shipped.
-- poppet's moat is the tool table: verified `csc` semantics for telemetry,
+- cascadeur-mcp's moat is the tool table: verified `csc` semantics for telemetry,
   AutoPosing/AutoPhysics convergence polling, FBX export (`FbxSceneLoader`), layer and
   keyframe ops, selection via `scene.modify_with_session`, plus documented quirks
   (Joint vs `_Box` controller, no public Vec3/Quaternion constructors, `ScriptsDir`
@@ -190,8 +190,8 @@ public wrapper of native `8765` besides Karylcode. Stars/dates as of 2026-10-26.
   clearance on the skinned mesh, wrist/hand styling), `mesh_sample`, `change_commit`.
   README reports mean foot skating 0.98 → 0.34 cm/frame on a 986-frame clip.
 - Installer path: signed Inno Setup installer + SBOM + provenance claims (README claim;
-  UNVERIFIED), no Python/uv/Poppet required, and explicitly *"Poppet is neither modified
-  nor required"* — evidence that poppet is the project this author benchmarked against.
+  UNVERIFIED), no Python/uv/cascadeur-mcp required, and explicitly *"cascadeur-mcp is neither modified
+  nor required"* — evidence that cascadeur-mcp is the project this author benchmarked against.
 - Verdict: architecturally pre-native (its whole UI pump solves what native `scene_idle`
   now solves), but the mocap-cleanup workflow is genuinely differentiated.
 
@@ -238,12 +238,12 @@ public wrapper of native `8765` besides Karylcode. Stars/dates as of 2026-10-26.
   additive layers alpha, easing, +Chinese/Japanese/Korean.
 - No Reddit/YouTube/Discord coverage found (UNVERIFIED — absence of search hits only).
 
-## (c) What poppet should keep / drop / steal
+## (c) What cascadeur-mcp should keep / drop / steal
 
 The 2026.2 native server solves "run code on the main thread at a safe point". The
 remaining product problems are (1) a compliant, ergonomic MCP front end, (2) typed/
 verified tools instead of raw Python, (3) safety and long-operation semantics, (4)
-review/output workflows, (5) distribution and diagnostics. poppet already owns (2) at a
+review/output workflows, (5) distribution and diagnostics. cascadeur-mcp already owns (2) at a
 depth no competitor matches; it currently owns nothing in (1)/(3)/(4)/(5) on 2026.2.
 
 ### Keep
@@ -280,7 +280,7 @@ depth no competitor matches; it currently owns nothing in (1)/(3)/(4)/(5) on 202
    `get_transform`/`get_local_transform`/`get_global_transform`/`get_pose`/… variants.
    "43 ungrouped tools" is now a liability — see steal #1 for the proven fix.
 4. **Any remote/multi-machine or public HTTP-server ambition.** Native server is
-   loopback-bound and unauthenticated; poppet should stay a local stdio server talking to
+   loopback-bound and unauthenticated; cascadeur-mcp should stay a local stdio server talking to
    `127.0.0.1:8765`.
 
 ### Steal
@@ -292,7 +292,7 @@ depth no competitor matches; it currently owns nothing in (1)/(3)/(4)/(5) on 202
    version:" descriptions, `doctor` covering ports + registered clients, one-command
    `setup`, optional autostart. Adopt all of it except the second in-app HTTP server.
 2. **From MnxD2A6 — the safety contract.** Capability handshake
-   (`get_bridge_capabilities`), a write-contract revision echo between poppet and its
+   (`get_bridge_capabilities`), a write-contract revision echo between cascadeur-mcp and its
    Cascadeur-side dispatcher, "timeout = unknown outcome → read back, never auto-retry",
    snapshot/rollback/recovery-status, preflight readiness reads, bounded payloads/frame
    ranges, structured errors, no arbitrary code by default.
@@ -303,7 +303,7 @@ depth no competitor matches; it currently owns nothing in (1)/(3)/(4)/(5) on 202
    completion".
 4. **From muhwagwa — a workflow differentiator.** Their mocap-cleanup suite (foot-skate
    QP, finger cleanup, arm clearance, contact sheets) is a packaged workflow, not
-   another primitive. poppet should ship one or two similarly opinionated workflows
+   another primitive. cascadeur-mcp should ship one or two similarly opinionated workflows
    (e.g. block poses → AutoPose → verify via telemetry → contact sheet); that is harder
    to commoditize than raw tool count.
 5. **From the native server — idle semantics and the modify-return trap.** Subscribe to
@@ -311,10 +311,10 @@ depth no competitor matches; it currently owns nothing in (1)/(3)/(4)/(5) on 202
    `scene.modify*` boolean return — exceptions can be logged while the RPC still reports
    success — and read the tail of `%LOCALAPPDATA%\Nekki Limited\Cascadeur\logs\cascadeur_log.log`
    on failure.
-6. **Don't copy Karylcode's "bootstrap a second server" step.** poppet's dispatchers are
+6. **Don't copy Karylcode's "bootstrap a second server" step.** cascadeur-mcp's dispatchers are
    already pure Python functions; the simplest 2026.2 design is one bootstrap
    `run_script` that loads the dispatcher bundle (embedded source or a temp-dir module),
-   then compact calls like `Poppet.dispatch({"op": "set_controller_position",
+   then compact calls like `cascadeur-mcp.dispatch({"op": "set_controller_position",
    "params": {...}})`. No user_scripts install, no menu command, no second HTTP port, no
    per-launch console paste.
 
@@ -338,8 +338,8 @@ depth no competitor matches; it currently owns nothing in (1)/(3)/(4)/(5) on 202
    first call (Cascadeur version, dispatcher protocol revision, available op set),
    preflight readiness for edits, modify-return-value checks with log-tail tracebacks,
    snapshot/undo guidance, bounded payloads, and a clear local trust-boundary statement
-   (native `8765` is unauthenticated on loopback; poppet must not widen that).
-5. **Ship distribution + diagnostics:** `poppet doctor` (native `/health` + version +
+   (native `8765` is unauthenticated on loopback; cascadeur-mcp must not widen that).
+5. **Ship distribution + diagnostics:** `cascadeur-mcp doctor` (native `/health` + version +
    port-in-use + dispatcher load test), one-command client registration for Claude Code /
    Claude Desktop / Codex / Cursor, README matrix "2026.2.3 primary; 2025.3.x legacy via
    file queue", and a recorded 2026.2.3 end-to-end demo replacing the 2025.3.3
@@ -362,7 +362,7 @@ Repos (metadata via `api.github.com/repos/...`; READMEs via
 - https://github.com/BrianFinch-1/cascadeur-codex-bridge — README (2026.2+, Node stdio +
   Python agent + daemon, profiles, MMD/Outline/viewport, packages); `docs/` listing.
 - https://github.com/muhwagwa0112/cascadeur-complete — README (2026.1.3.0.15619, UI pump
-  + UI Automation fallback, mocap cleanup, "Poppet is neither modified nor required").
+  + UI Automation fallback, mocap cleanup, "cascadeur-mcp is neither modified nor required").
 - https://github.com/ysk424/cascadeur-mcp — README (per-call `--run-script`, 5 tools,
   TCP 53151, FbxSceneLoader list, roadmap).
 - https://github.com/BYGGOLDENSTONE/cascadeur-mcp-bridge — README (file bridge, menu
