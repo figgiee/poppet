@@ -21,10 +21,16 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from poppet_mcp import __version__
 from poppet_mcp.cascadeur_connection import CascadeurConnection
 from poppet_mcp.runtime import runtime_version
 
 mcp = FastMCP("poppet")
+# Report the real package version in the MCP handshake when the SDK allows it.
+try:  # pragma: no cover - depends on the installed MCP SDK internals
+    mcp._mcp_server.version = __version__
+except Exception:  # pragma: no cover
+    pass
 _conn: CascadeurConnection | None = None
 
 
@@ -373,8 +379,27 @@ def export_fbx(path: str) -> dict:
 
 @mcp.tool()
 def save_scene(path: str) -> dict:
-    """Save the current scene to a ``.casc`` file."""
-    return _call("save_scene", path=path)
+    """Save the current scene to a ``.casc`` file.
+
+    Cascadeur writes large scenes asynchronously, so this tool waits briefly for
+    the file to hit disk before returning ``exists``/``size_bytes``.
+    """
+    import time
+    from pathlib import Path
+
+    result = _call("save_scene", path=path)
+    target = result.get("path") if isinstance(result, dict) else None
+    if target and not result.get("exists"):
+        deadline = time.monotonic() + 10.0
+        candidate = Path(target)
+        while time.monotonic() < deadline:
+            if candidate.exists():
+                result["exists"] = True
+                result["size_bytes"] = candidate.stat().st_size
+                result["save_pending"] = False
+                break
+            time.sleep(0.1)
+    return result
 
 
 @mcp.tool()
@@ -519,14 +544,28 @@ def redo() -> dict:
 
 
 @mcp.tool()
-def screenshot_viewport(path: str | None = None) -> dict:
-    """Capture the 3D viewport to a PNG and return the written path.
+def screenshot_viewport(path: str | None = None, wait_sec: float = 10.0) -> dict:
+    """Capture the 3D viewport to a PNG and return the written path/size.
 
-    If ``path`` is omitted a timestamped file is generated. The response reports
-    the method that actually produced the image; screenshot capability depends on
-    the Cascadeur build, so check ``exists``.
+    If ``path`` is omitted a timestamped file is generated. Cascadeur renders
+    asynchronously, so this tool submits the render and waits up to ``wait_sec``
+    for the file to appear before returning ``exists``/``size_bytes``.
     """
-    return _call("viewport_screenshot", path=path)
+    result = _call("viewport_screenshot", path=path)
+    target = result.get("path") if isinstance(result, dict) else None
+    if target and not result.get("exists"):
+        import time
+        from pathlib import Path
+
+        deadline = time.monotonic() + max(0.0, wait_sec)
+        candidate = Path(target)
+        while time.monotonic() < deadline:
+            if candidate.exists():
+                result["exists"] = True
+                result["size_bytes"] = candidate.stat().st_size
+                break
+            time.sleep(0.1)
+    return result
 
 
 # ----------------------------------------------------------------------------

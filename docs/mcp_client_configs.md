@@ -115,3 +115,18 @@ Set per client in the `env` block:
 
 If the client shows no `poppet` server, run the configured command in a terminal —
 the traceback there is the real error. See [TROUBLESHOOTING.md](../TROUBLESHOOTING.md).
+
+## Cascadeur-side prerequisites
+
+No Cascadeur-side install is needed, but every Cascadeur session needs the bootstrap:
+
+```bash
+uvx poppet-bootstrap
+```
+
+Paste the printed `exec(open(...))` line into **Window → Python Console** and Execute.
+The bootstrap starts the built-in script server on a free port (8765 by default),
+installs the 10 ms interpreter keeper, and writes the chosen port to
+`%LOCALAPPDATA%\poppet-mcp\server.json`. `poppet-mcp` reads that file, so no
+`POPPET_URL` is normally required. Set `POPPET_URL` (and `POPPET_SERVER_PORT` before
+bootstrapping) only for custom setups.

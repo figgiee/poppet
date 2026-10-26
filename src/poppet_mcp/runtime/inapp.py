@@ -826,43 +826,16 @@ def _d_frame_get(params, scene):
 
 
 def _d_frame_set(params, scene):
-    """Move the playhead. Pattern from bundled export_to_roblox.py:
+    """Move the playhead.
 
-        def mod(model, update, scene_updater, session):
-            session.set_current_frame(frame_num)
-        scene.modify_update_with_session("...", mod)
-
-    The set_current_frame call MUST be inside the modify_update_with_session
-    callback — bare scene.set_current_frame() or session.set_current_frame()
-    outside a session context is silently no-op in 2025.3.3.
+    Live-verified on 2026.2.3: a direct ``csc.domain.Scene.set_current_frame(int)``
+    call on the main thread moves the playhead and reads back immediately. The
+    2025.3-era "must be inside modify_update_with_session" workaround is stale —
+    in 2026.2 it returned success while doing nothing.
     """
     frame = int(params["frame"])
-    err = {"value": None}
-
-    def mod(model, update, scene_updater, session):
-        try:
-            session.set_current_frame(frame)
-        except Exception as e:
-            err["value"] = f"{type(e).__name__}: {e}"
-
-    try:
-        # csc.domain.Scene.modify_update_with_session(...) -> bool; False means the
-        # callback failed and Cascadeur only logged the traceback.
-        _checked_modify(scene, "Poppet: set frame", mod, session=True, update=True)
-    except Exception as e:
-        err["value"] = f"modify_update_with_session: {type(e).__name__}: {e}"
-    if err["value"]:
-        raise RuntimeError(f"could not move the playhead to frame {frame}: {err['value']}")
-
-    actual = scene.get_current_frame()
-    out = {
-        "requested": frame,
-        "current_frame": actual,
-        # get_current_frame() often lags behind the in-session change; the
-        # visual playhead moves correctly even when this reads back 0.
-        "note": "playhead moves visually; readback may lag until next drain",
-    }
-    return out
+    scene.set_current_frame(frame)  # csc.domain.Scene.set_current_frame(frame) -> None
+    return {"requested": frame, "current_frame": scene.get_current_frame()}
 
 
 # ============================================================================
@@ -871,12 +844,13 @@ def _d_frame_set(params, scene):
 
 
 def _d_save_scene(params, scene):
-    """Save the current scene to ``path`` via DataSourceManager.
+    """Save the current scene to ``path``.
 
-    Verified 2026.2 stubs only:
-      * ``csc.app.DataSourceManager.save_scene_as(csc.view.Scene, str)``
-      * ``csc.view.Scene.save(str)`` (fallback)
-    The 2-arg ``save_scene(scene, path)`` / ``dsm.save`` shapes never existed.
+    Live-verified on 2026.2.3: ``csc.view.Scene.save(path)`` is what actually
+    writes the .casc file. ``DataSourceManager.save_scene_as`` and the
+    callback-based ``save_scene`` return without writing anything, so they are
+    kept only as fallbacks. The client polls for the file, since a large scene can
+    take a moment to hit disk.
     """
     import csc
 
@@ -891,31 +865,36 @@ def _d_save_scene(params, scene):
 
     app = csc.app.get_application()
     dsm = app.get_data_source_manager()
-    view_scene = app.current_scene()  # csc.app.Application.current_scene() -> csc.view.Scene
+    view_scene = app.current_scene()
 
     last_err = None
     method = None
-    try:
-        dsm.save_scene_as(view_scene, normalized)
-        method = "DataSourceManager.save_scene_as"
-    except Exception as e:
-        last_err = f"save_scene_as: {type(e).__name__}: {e}"
+    for label, attempt in (
+        ("view.Scene.save", lambda: view_scene.save(normalized)),
+        (
+            "DataSourceManager.save_scene_as",
+            lambda: dsm.save_scene_as(view_scene, normalized),
+        ),
+    ):
         try:
-            view_scene.save(normalized)
-            method = "view.Scene.save"
-        except Exception as e2:
-            last_err = f"{last_err}; view.Scene.save: {type(e2).__name__}: {e2}"
+            attempt()
+            method = label
+            last_err = None
+            break
+        except Exception as exc:  # noqa: BLE001 - report which shape failed
+            last_err = f"{label}: {type(exc).__name__}: {exc}"
 
     if method is None:
         raise RuntimeError(f"could not save the scene: {last_err}")
-    if not os.path.exists(normalized):
-        raise RuntimeError(f"{method} returned but no file was written to {normalized!r}")
+
+    exists = os.path.exists(normalized)
     return {
         "path": normalized,
         "method": method,
-        "exists": True,
-        "size_bytes": os.path.getsize(normalized),
+        "exists": exists,
+        "size_bytes": os.path.getsize(normalized) if exists else 0,
         "saved": True,
+        "save_pending": not exists,
     }
 
 
@@ -1251,6 +1230,19 @@ def _d_object_duplicate(params, scene):
     if obj_id is None:
         raise ValueError(f"object not found: {name!r}")
 
+    # The bundled duplicate command operates on the current selection; select the
+    # source object first (and restore the old selection afterwards).
+    previous_ids = []
+    try:
+        previous_ids = _selected_obj_ids(scene)
+    except Exception:
+        previous_ids = []
+
+    def _select_for_duplicate(model, update, sc, session):
+        session.take_selector().select({obj_id}, obj_id)
+
+    _checked_modify(scene, "Poppet: select for duplicate", _select_for_duplicate, session=True)
+
     app = csc.app.get_application()
     view_scene = app.current_scene()  # csc.app.Application.current_scene()
     clipboard = app.get_scene_clipboard()  # csc.app.Application.get_scene_clipboard()
@@ -1302,6 +1294,17 @@ def _d_object_duplicate(params, scene):
 
     _checked_modify(scene, "Poppet: duplicate object", mod, session=True, update=True)
 
+    # Restore the selection the user had before the duplicate.
+    try:
+
+        def _restore_selection(model, update, sc, session):
+            focus = previous_ids[0] if previous_ids else csc.model.ObjectId.null()
+            session.take_selector().select(set(previous_ids), focus)
+
+        _checked_modify(scene, "Poppet: restore selection", _restore_selection, session=True)
+    except Exception:
+        pass
+
     new_objects = []
     for oid in created_ids:
         try:
@@ -1351,14 +1354,15 @@ def _d_viewport_screenshot(params, scene):
     view_scene = app.current_scene()  # csc.app.Application.current_scene() -> csc.view.Scene
     tool = app.get_tools_manager().get_tool("RenderToFile")  # csc.app.ToolsManager.get_tool
     tool.take_image(view_scene, render_parameters, normalized)
-    if not os.path.exists(normalized):
-        raise RuntimeError(
-            f"RenderToFile.take_image returned but no image was written to {normalized!r}"
-        )
+    # Cascadeur renders asynchronously: the PNG lands on a later frame (~150 ms in
+    # the 2026.2.3 sample scene). Report the render as started and let the MCP
+    # tool layer poll for the file instead of blocking the main thread here.
+    exists = os.path.exists(normalized)
     return {
         "path": normalized,
-        "exists": True,
-        "size_bytes": os.path.getsize(normalized),
+        "exists": exists,
+        "size_bytes": os.path.getsize(normalized) if exists else 0,
+        "render_started": True,
         "method": "RenderToFile.take_image",
     }
 

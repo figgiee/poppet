@@ -86,11 +86,11 @@ def test_exec_escape_hatch_runs_inside_the_host(stack):
     assert result == 2 or "2" in str(result)
 
 
-def test_mutation_goes_through_checked_modify(stack):
+def test_frame_set_calls_scene_method(stack):
     _, client, scene = stack
     out = client.request("frame_set", {"frame": 12})
     assert out["requested"] == 12
-    assert scene.modify_update_with_session.called
+    scene.set_current_frame.assert_called_once_with(12)
 
 
 def test_keyframe_transform_envelope_reaches_the_handler(stack):

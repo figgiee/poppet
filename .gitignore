@@ -28,3 +28,9 @@ _test_*.pkl
 .test-artifacts/
 .acl-reports/
 .build-check/
+
+# live-verification scratch artifacts
+.live-*\n.console-*\n.uia-*\n
+.probe-*
+.focus-*
+

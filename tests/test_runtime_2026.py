@@ -203,25 +203,26 @@ def test_screenshot_uses_three_arg_take_image(csc_mock, fake_scene, monkeypatch)
 # ---------------------------------------------------------------------------
 
 
-def test_save_scene_uses_save_scene_as(csc_mock, fake_scene, monkeypatch):
+def test_save_scene_prefers_view_scene_save(csc_mock, fake_scene, monkeypatch):
     monkeypatch.setattr(_dispatchers.os.path, "exists", lambda p: True)
     monkeypatch.setattr(_dispatchers.os.path, "getsize", lambda p: 10)
     monkeypatch.setattr(_dispatchers.os, "makedirs", lambda *a, **k: None)
-    out = _dispatchers._d_save_scene({"path": r"C:\fake\out.casc"}, fake_scene)
     app = csc_mock.app.get_application.return_value
-    dsm = app.get_data_source_manager.return_value
-    # csc.app.DataSourceManager.save_scene_as(csc.view.Scene, str)
-    dsm.save_scene_as.assert_called_once_with(app.current_scene.return_value, "C:/fake/out.casc")
+    # csc.view.Scene.save(str) is the 2026.2 path that actually writes the file.
+    out = _dispatchers._d_save_scene({"path": r"C:\fake\out.casc"}, fake_scene)
+    app.current_scene.return_value.save.assert_called_once_with("C:/fake/out.casc")
     assert out["saved"] is True
-    assert out["method"] == "DataSourceManager.save_scene_as"
+    assert out["method"] == "view.Scene.save"
 
 
-def test_save_scene_raises_when_no_file_written(csc_mock, fake_scene, monkeypatch):
+def test_save_scene_reports_pending_when_file_lags(csc_mock, fake_scene, monkeypatch):
     monkeypatch.setattr(_dispatchers.os.path, "exists", lambda p: False)
     monkeypatch.setattr(_dispatchers.os.path, "getsize", lambda p: 0)
     monkeypatch.setattr(_dispatchers.os, "makedirs", lambda *a, **k: None)
-    with pytest.raises(RuntimeError, match="no file was written"):
-        _dispatchers._d_save_scene({"path": r"C:\fake\out.casc"}, fake_scene)
+    out = _dispatchers._d_save_scene({"path": r"C:\fake\out.casc"}, fake_scene)
+    assert out["saved"] is True
+    assert out["exists"] is False
+    assert out["save_pending"] is True
 
 
 def test_load_scene_raises_when_refused(csc_mock, fake_scene, monkeypatch):

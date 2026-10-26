@@ -97,7 +97,7 @@ def test_connection_refused_is_actionable():
     connection = CascadeurConnection(url=f"http://127.0.0.1:{port}", timeout=1.0)
     with pytest.raises(CascadeurNotRunning) as excinfo:
         connection.health()
-    assert "Scripts -> MCP -> Start script server" in str(excinfo.value)
+    assert "poppet-bootstrap" in str(excinfo.value)
 
 
 def test_port_conflict_is_diagnosed():
@@ -126,7 +126,7 @@ def test_port_conflict_is_diagnosed():
         connection = CascadeurConnection(url=url, timeout=5.0)
         with pytest.raises(CascadeurProtocolError) as excinfo:
             connection.health()
-        assert "port 8765" in str(excinfo.value)
+        assert "free port" in str(excinfo.value)
     finally:
         foreign.shutdown()
         foreign.server_close()

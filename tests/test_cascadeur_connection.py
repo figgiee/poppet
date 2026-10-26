@@ -58,7 +58,7 @@ def test_url_error_is_reported_as_not_running():
     exc = urllib.error.URLError(ConnectionRefusedError(10061, "refused"))
     mapped = connection._describe_url_error(connection.url + "/health", exc)
     assert isinstance(mapped, CascadeurNotRunning)
-    assert "Scripts -> MCP -> Start script server" in str(mapped)
+    assert "poppet-bootstrap" in str(mapped)
 
 
 def test_connection_defaults_track_environment(monkeypatch):

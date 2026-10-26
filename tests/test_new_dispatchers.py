@@ -240,13 +240,16 @@ def test_screenshot_returns_method_used(csc_mock, fake_scene, monkeypatch):
     assert out["exists"] is True
 
 
-def test_screenshot_raises_when_no_file_written(csc_mock, fake_scene, monkeypatch):
-    # Never a false success: take_image returning is not proof a file exists.
+def test_screenshot_reports_async_render_when_file_missing(csc_mock, fake_scene, monkeypatch):
+    # Cascadeur renders asynchronously: take_image returning is not proof the file
+    # exists yet, so the handler reports the render as started and the MCP tool
+    # layer polls for the file.
     target = r"C:\fake\shot.png"
     monkeypatch.setattr(_dispatchers.os.path, "exists", lambda p: False)
     monkeypatch.setattr(_dispatchers.os, "makedirs", lambda *a, **k: None)
-    with pytest.raises(RuntimeError, match="no image was written"):
-        _dispatchers._d_viewport_screenshot({"path": target}, fake_scene)
+    out = _dispatchers._d_viewport_screenshot({"path": target}, fake_scene)
+    assert out["render_started"] is True
+    assert out["exists"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -254,38 +257,12 @@ def test_screenshot_raises_when_no_file_written(csc_mock, fake_scene, monkeypatc
 # ---------------------------------------------------------------------------
 
 
-def test_frame_set_uses_modify_update_with_session(fake_scene):
-    captured = {"called": False}
-
-    def _capture(label, mod):
-        captured["called"] = True
-        # Sanity: mod arity is 4 (model, update, scene_updater, session).
-        import inspect
-
-        sig = inspect.signature(mod)
-        assert len(sig.parameters) == 4
-        # Run it with mocks to make sure it doesn't blow up.
-        mod(*(MagicMock() for _ in range(4)))
-
-    fake_scene.modify_update_with_session.side_effect = _capture
+def test_frame_set_calls_scene_set_current_frame(fake_scene):
+    # Live-verified 2026.2.3 API: a direct csc.domain.Scene.set_current_frame(int).
     fake_scene.get_current_frame.return_value = 7
     out = _dispatchers._d_frame_set({"frame": 7}, fake_scene)
-    assert captured["called"]
-    assert out["requested"] == 7
-    assert out["current_frame"] == 7
-    assert "note" in out  # persisted field removed; note explains the readback lag
-
-
-def test_frame_set_readback_lag_noted(fake_scene):
-    # get_current_frame often lags behind the in-session change; response
-    # documents this rather than reporting a misleading persisted=False.
-    fake_scene.modify_update_with_session.return_value = None
-    fake_scene.get_current_frame.return_value = 0
-    out = _dispatchers._d_frame_set({"frame": 30}, fake_scene)
-    assert out["requested"] == 30
-    assert out["current_frame"] == 0
-    assert "note" in out
-    assert "persisted" not in out
+    fake_scene.set_current_frame.assert_called_once_with(7)
+    assert out == {"requested": 7, "current_frame": 7}
 
 
 # ---------------------------------------------------------------------------

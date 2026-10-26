@@ -28,6 +28,14 @@ Cascadeur as source text on the first tool call.
 
 ### Added
 
+- `poppet-bootstrap` — writes Poppet's Cascadeur-side bootstrap and prints the
+  one-line Python Console command. The bootstrap starts Cascadeur's built-in script
+  server on a free port and installs a 10 ms PySide keeper timer that keeps the
+  embedded interpreter cycling the GIL and drives `scene_idle`, fixing the 2026.2.3
+  stall where the menu-started server is unreachable while Cascadeur is idle.
+- Port auto-discovery: the bootstrap records its port in
+  `%LOCALAPPDATA%\poppet-mcp\server.json`; `poppet-mcp` reads it when `POPPET_URL`
+  is unset (new `POPPET_SERVER_PORT` env var for the preferred port).
 - `get_script_server_status` — one-call diagnosis of the link between poppet and
   Cascadeur (connectivity, script-server version, loaded runtime version,
   embedded Python, whether a scene is open).
@@ -43,6 +51,10 @@ Cascadeur as source text on the first tool call.
 
 ### Fixed
 
+- Live-verified 1.0 against Cascadeur 2026.2.3 with the Cascy sample scene: 43/44
+  tool steps passed end-to-end (`docs/verification/live-verify.json`) and the full
+  MCP stdio path passed with 45 tools registered. The one failure,
+  `duplicate_object`, is documented as a known 2026.2.3 issue.
 - 2026.2.3 compatibility pass over every handler, driven by the shipped `.pyi`
   stubs (see `docs/research/python-api-diff.md`): handler fixes for layer
   visibility/locking, object hierarchy, object delete/duplicate, scene save,
@@ -57,6 +69,14 @@ Cascadeur as source text on the first tool call.
   selection (`Scene.get_layers_selector` / `Session.take_layers_selector`).
   2026.2 has no separate "active layer" API; responses carry
   `"semantics": "timeline-layer-selection"`.
+- `save_scene` now uses the working `csc.view.Scene.save` path and the client waits
+  for the file, instead of trusting `DataSourceManager.save_scene_as` (which returns
+  without writing on 2026.2.3).
+- `screenshot_viewport` now reports the asynchronous render and the client polls for
+  the PNG, instead of failing because the file lands ~150 ms later.
+- `set_current_frame` uses the live-verified direct
+  `csc.domain.Scene.set_current_frame(frame)` call (the 2025.3 modify-session
+  indirection silently did nothing on 2026.2.3).
 - `csc://schema` now reflects the live 2026.2.3 API surfaced from the running
   Cascadeur instance rather than a cached 2025.3.x dump.
 

@@ -198,3 +198,16 @@ Set `pelvis_Box`, not `pelvis`; rotation is a quaternion `(qx,qy,qz,qw)` while
 telemetry returns Euler angles; `call_action` never blocks, so poll if you need
 completion; most tools need an open scene. Port 8765 busy → see
 [TROUBLESHOOTING.md](TROUBLESHOOTING.md#port-8765-is-already-in-use).
+
+## Before you start (2026.2.3)
+
+Cascadeur's built-in script server stalls while the app is idle, so run Poppet's
+bootstrap once per Cascadeur session before using any tool:
+
+```bash
+uvx poppet-bootstrap     # then paste the printed exec(open(...)) line in
+                         # Cascadeur: Window -> Python Console, Execute
+```
+
+Open a scene first. The client finds the server port automatically from
+`%LOCALAPPDATA%\poppet-mcp\server.json`; set `POPPET_URL` only to override it.

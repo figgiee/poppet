@@ -40,20 +40,38 @@ from poppet_mcp.runtime import load_source as load_runtime_source
 from poppet_mcp.runtime import runtime_version, source_digest
 
 DEFAULT_URL = "http://127.0.0.1:8765"
+STATE_DIR_NAME = "poppet-mcp"
 DEFAULT_TIMEOUT = 35.0
 
 _NOT_RUNNING_HINT = (
     "Cascadeur's built-in script server is not reachable at {url}.\n"
-    "In Cascadeur 2026.2+: Scripts -> MCP -> Start script server.\n"
-    "The Event Log should print "
-    "'[Cascadeur MCP] listening at http://127.0.0.1:8765/mcp'."
+    "Run Poppet's Cascadeur-side bootstrap once per Cascadeur session:\n"
+    "  poppet-bootstrap        (prints the Python Console line to paste)\n"
+    "It starts the server and keeps Cascadeur's interpreter ticking; without it,\n"
+    "Cascadeur 2026.2's server thread starves while the app is idle."
 )
 
 _PORT_CONFLICT_HINT = (
-    "Something other than Cascadeur's script server answered at {url}. "
-    "Another program is probably holding port 8765; close it, then start the "
-    "script server again from Cascadeur's Scripts -> MCP menu."
+    "Something other than Cascadeur's script server answered at {url}. Another "
+    "program is holding that port; run poppet-bootstrap, which picks the next "
+    "free port and writes %LOCALAPPDATA%\\poppet-mcp\\server.json so the client "
+    "finds it automatically."
 )
+
+
+def _discovered_url() -> str | None:
+    """Read the port chosen by poppet-bootstrap's ``server.json``, if present."""
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    path = os.path.join(base, STATE_DIR_NAME, "server.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        port = int(data.get("port"))
+        if 0 < port < 65536:
+            return f"http://127.0.0.1:{port}"
+    except Exception:
+        return None
+    return None
 
 
 class CascadeurConnectionError(RuntimeError):
@@ -102,7 +120,9 @@ class CascadeurConnection:
         runtime_version_str: str | None = None,
         poll_interval: float | None = None,  # accepted for backwards compatibility
     ):
-        self.url = (url or os.environ.get("POPPET_URL") or DEFAULT_URL).rstrip("/")
+        self.url = (url or os.environ.get("POPPET_URL") or _discovered_url() or DEFAULT_URL).rstrip(
+            "/"
+        )
         self.timeout = float(os.environ.get("POPPET_TIMEOUT", timeout))
         self._runtime_source = runtime_source
         self._runtime_version = runtime_version_str

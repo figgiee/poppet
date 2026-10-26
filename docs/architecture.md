@@ -128,11 +128,32 @@ should run in the `scene_idle` context. Prompts only see typed tool arguments.
 | `CascadeurProtocolError` — "Something other than … answered" | transport | another app owns 8765; `/health` is not `{"ok": true, ...}` or 404s |
 | `CascadeurTimeout` — "accepted the request but did not answer within Ns" | transport + host | never reached `scene_idle`, or the handler outlived the deadline |
 | `CascadeurScriptError` + traceback | in-app | handler raised inside `poppet_rt`; the traceback is Cascadeur's |
+| `/health` times out, port is listening, Event Log says "listening" | host | bootstrap keeper not installed (GIL stall — see above) |
 | `CascadeurProtocolError` — "empty 'value'" | protocol | server fell back to `exec`; a non-expression slipped past the wrapper |
 | `CascadeurProtocolError` — "bootstrap marker again" | protocol | runtime failed to load |
 
 Timeouts are not proof the mutation did not happen. Read state back before retrying;
 see [TROUBLESHOOTING.md](../TROUBLESHOOTING.md).
+
+### The embedded-interpreter stall (why bootstrap exists)
+
+Live-verified 2026.2.3 behaviour: the script server's HTTP handler thread starves while
+Cascadeur is idle. Cascadeur's embedded interpreter keeps the GIL inside the Qt idle
+loop, so the background thread cannot accept a connection or answer one; connections
+queue in the listen backlog until they time out, and `/run` scripts never reach the
+`scene_idle` callback they wait for. Menu-started servers therefore print "listening"
+but are unreachable until Python happens to run on the main thread.
+
+Poppet's `poppet-bootstrap` (printed by `poppet-bootstrap`, pasted once per Cascadeur
+launch) fixes both halves from inside the app:
+
+- starts/stops the built-in server on a free port (menu default 8765, walking upward),
+- installs a 10 ms PySide `QTimer` whose slot calls `events.scene_idle_manager.run(scene)`
+  — this keeps the interpreter cycling the GIL *and* drives the queue drain.
+
+The timer lives in Cascadeur's Python memory only; nothing is written into
+`user_scripts/`. The chosen port goes to `%LOCALAPPDATA%\poppet-mcp\server.json`, which
+the client reads when `POPPET_URL` is unset.
 
 ### The ~30 s cap
 

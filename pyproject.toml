@@ -33,6 +33,7 @@ dev = [
 
 [project.scripts]
 poppet-mcp = "poppet_mcp.server:main"
+poppet-bootstrap = "poppet_mcp.bootstrap_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/figgiee/poppet"

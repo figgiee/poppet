@@ -1,0 +1,1005 @@
+{
+  "cascadeur": "2026.2.3",
+  "url": "http://127.0.0.1:8766",
+  "scene": "Cascy (2).casc",
+  "object_count": 289,
+  "started_at": "2026-10-26T15:54:22",
+  "total": 44,
+  "passed": 43,
+  "failed": 1,
+  "results": [
+    {
+      "step": "ping",
+      "command": "ping",
+      "params": {},
+      "ok": true,
+      "ms": 163,
+      "result": {
+        "pong": true,
+        "runtime_version": "1.0.0",
+        "python": "3.11.0",
+        "has_scene": true
+      }
+    },
+    {
+      "step": "runtime_ping",
+      "command": "ping",
+      "params": {},
+      "ok": true,
+      "ms": 60,
+      "result": {
+        "pong": true,
+        "runtime_version": "1.0.0",
+        "python": "3.11.0",
+        "has_scene": true
+      }
+    },
+    {
+      "step": "health",
+      "ok": true,
+      "result": {
+        "ok": true,
+        "version": "0.3.1",
+        "idle_subscription": 2,
+        "message_subscription": 2,
+        "queued": 0
+      }
+    },
+    {
+      "step": "load_scene",
+      "command": "load_scene",
+      "params": {
+        "path": "C:\\Users\\sandv\\AppData\\Local\\Cascadeur\\samples\\Cascy.casc"
+      },
+      "ok": true,
+      "ms": 2859,
+      "result": {
+        "path": "C:/Users/sandv/AppData/Local/Cascadeur/samples/Cascy.casc",
+        "loaded": true,
+        "method": "DataSourceManager.load_scene"
+      }
+    },
+    {
+      "step": "scene_info",
+      "command": "scene_info",
+      "params": {},
+      "ok": true,
+      "ms": 161,
+      "result": {
+        "has_scene": true,
+        "current_frame": 0,
+        "object_count": 289,
+        "layer_count": 13,
+        "selection_count": 0,
+        "scene_name": "Cascy (2).casc"
+      }
+    },
+    {
+      "step": "list_objects",
+      "command": "objects_list",
+      "params": {
+        "name_contains": null
+      },
+      "ok": true,
+      "ms": 70,
+      "result": {
+        "objects": "<list len=289 truncated>",
+        "count": 289
+      }
+    },
+    {
+      "step": "list_layers",
+      "command": "layers_list",
+      "params": {},
+      "ok": true,
+      "ms": 130,
+      "result": {
+        "layers": [
+          {
+            "id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+            "name": "Arm_R",
+            "obj_id_count": 12,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "3cb2a881-2669-4d34-bf31-46d760d36b8c",
+            "name": "Hand_L",
+            "obj_id_count": 12,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "51b55ffb-8e48-4661-b8ca-da0f2362a7e9",
+            "name": "Fingers_L",
+            "obj_id_count": 35,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "782f2e5c-4031-4ebb-9a91-b24bba03e0bb",
+            "name": "Hand_R",
+            "obj_id_count": 12,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "ce637781-f7e4-4eb0-a491-d979b7431c78",
+            "name": "Torso",
+            "obj_id_count": 61,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "9ca00453-c219-4c6e-9f3a-9ffa0ffc4545",
+            "name": "Leg_R",
+            "obj_id_count": 12,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "aa1894c0-1919-45c4-8a0d-bbe31201e615",
+            "name": "Foot_L",
+            "obj_id_count": 21,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "c4bb427c-544e-4bc0-8f47-0feb41f91a74",
+            "name": "Foot_R",
+            "obj_id_count": 21,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "e29ccf5c-61ad-441a-8279-a0c67d923a56",
+            "name": "Fingers_R",
+            "obj_id_count": 35,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "e52f45be-6b6b-4efe-9abf-e464ec333eb3",
+            "name": "Leg_L",
+            "obj_id_count": 12,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "ed087033-16d2-4304-992a-5481f609a25f",
+            "name": "Arm_L",
+            "obj_id_count": 12,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "f65688f0-d327-4f14-939a-dda6e24df94b",
+            "name": "Head",
+            "obj_id_count": 14,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          },
+          {
+            "id": "fc691e1b-9d0e-4b48-9f7a-dc66206256d6",
+            "name": "Pelvis",
+            "obj_id_count": 30,
+            "key_frame_count": 1,
+            "is_visible": true,
+            "is_locked": false
+          }
+        ],
+        "count": 13,
+        "frames_count": 1
+      }
+    },
+    {
+      "step": "selection_get",
+      "command": "selection_get",
+      "params": {},
+      "ok": true,
+      "ms": 59,
+      "result": {
+        "selected": [],
+        "count": 0
+      }
+    },
+    {
+      "step": "frame_get",
+      "command": "frame_get",
+      "params": {},
+      "ok": true,
+      "ms": 50,
+      "result": {
+        "current_frame": 0
+      }
+    },
+    {
+      "step": "selection_set",
+      "command": "selection_set",
+      "params": {
+        "object_names": [
+          "pelvis",
+          "thigh_l",
+          "calf_l"
+        ]
+      },
+      "ok": true,
+      "ms": 82,
+      "result": {
+        "requested": [
+          "pelvis",
+          "thigh_l",
+          "calf_l"
+        ],
+        "resolved_count": 3,
+        "missing": []
+      }
+    },
+    {
+      "step": "selection_extend",
+      "command": "selection_extend",
+      "params": {
+        "object_names": [
+          "pelvis"
+        ]
+      },
+      "ok": true,
+      "ms": 58,
+      "result": {
+        "added": [
+          "pelvis"
+        ],
+        "missing": [],
+        "selection_count": 3
+      }
+    },
+    {
+      "step": "selection_subtract",
+      "command": "selection_subtract",
+      "params": {
+        "object_names": [
+          "thigh_l"
+        ]
+      },
+      "ok": true,
+      "ms": 70,
+      "result": {
+        "removed": [
+          "thigh_l"
+        ],
+        "missing": [],
+        "selection_count": 2
+      }
+    },
+    {
+      "step": "selection_filter",
+      "command": "selection_filter",
+      "params": {
+        "pattern": "pelvis",
+        "mode": "contains"
+      },
+      "ok": true,
+      "ms": 280,
+      "result": {
+        "pattern": "pelvis",
+        "mode": "contains",
+        "matched_count": 11,
+        "matched_names": [
+          "pelvis",
+          "pelvis_Box",
+          "pelvis_MainPoint",
+          "pelvis_AdditionalPoint",
+          "pelvis_Triangle",
+          "pelvis_Default Rotation",
+          "EdgeView_pelvis_MainPoint<->stomach_MainPoint",
+          "EdgeView_pelvis_MainPoint<->pelvis_AdditionalPoint",
+          "EdgeView_pelvis_MainPoint<->thigh_MainPoint_r",
+          "EdgeView_pelvis_MainPoint<->thigh_MainPoint_l",
+          "pelvis_Rigid"
+        ]
+      }
+    },
+    {
+      "step": "selection_clear",
+      "command": "selection_clear",
+      "params": {},
+      "ok": true,
+      "ms": 51,
+      "result": {
+        "cleared": true
+      }
+    },
+    {
+      "step": "object_transform_get",
+      "command": "object_transform_get",
+      "params": {
+        "object_name": "pelvis",
+        "frame": 0
+      },
+      "ok": true,
+      "ms": 100,
+      "result": {
+        "object": "pelvis",
+        "frame": 0,
+        "position": [
+          0.0009238154743798077,
+          95.63358306884766,
+          -5.191793918609619
+        ],
+        "rotation": [
+          4.160368916927837e-06,
+          -0.9999234080314636,
+          0.012375591322779655,
+          7.0924356805335265e-06
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "step": "list_object_attributes",
+      "command": "object_attributes_list",
+      "params": {
+        "object_name": "pelvis"
+      },
+      "ok": true,
+      "ms": 119,
+      "result": {
+        "object": "pelvis",
+        "attributes": [
+          {
+            "name": "pelvis.Actual"
+          },
+          {
+            "name": "pelvis.MirrorMode"
+          },
+          {
+            "name": "pelvis.Export Scale Animation"
+          },
+          {
+            "name": "pelvis.Use Namespace"
+          },
+          {
+            "name": "pelvis.Joint Type"
+          },
+          {
+            "name": "pelvis.Export Rotate Animation"
+          },
+          {
+            "name": "pelvis.Rotation Order"
+          },
+          {
+            "name": "pelvis.Model Pose"
+          },
+          {
+            "name": "pelvis.Use custom color"
+          },
+          {
+            "name": "pelvis.Joint Color"
+          },
+          {
+            "name": "pelvis.SymmetryPlane"
+          },
+          {
+            "name": "pelvis.Constant Datas"
+          },
+          {
+            "name": "pelvis.Pre Rotation"
+          },
+          {
+            "name": "pelvis.Matrices"
+          },
+          {
+            "name": "pelvis.T Pose Rotation"
+          },
+          {
+            "name": "pelvis.Local<->Global Switcher"
+          },
+          {
+            "name": "pelvis.Joint Width"
+          },
+          {
+            "name": "pelvis.Basic update"
+          },
+          {
+            "name": "pelvis.In"
+          },
+          {
+            "name": "pelvis.Out"
+          },
+          {
+            "name": "pelvis.Local"
+          },
+          {
+            "name": "pelvis.Is Exported"
+          },
+          {
+            "name": "pelvis.Global"
+          },
+          {
+            "name": "pelvis.External properties"
+          },
+          {
+            "name": "pelvis.Constant Settings"
+          },
+          {
+            "name": "pelvis.Node Index"
+          },
+          {
+            "name": "pelvis.Size"
+          },
+          {
+            "name": "pelvis.Export Translate Animation"
+          },
+          {
+            "name": "pelvis.Post Rotation"
+          }
+        ],
+        "count": 29
+      }
+    },
+    {
+      "step": "object_hierarchy",
+      "command": "object_hierarchy",
+      "params": {},
+      "ok": true,
+      "ms": 51,
+      "result": {
+        "objects": "<list len=289 truncated>",
+        "count": 289
+      }
+    },
+    {
+      "step": "get_keyframes",
+      "command": "keyframes_get",
+      "params": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "frame_start": 0,
+        "frame_end": 5
+      },
+      "ok": true,
+      "ms": 59,
+      "result": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "key_frame_indices": [
+          0
+        ],
+        "count": 1
+      }
+    },
+    {
+      "step": "active_layer_get",
+      "command": "active_layer_get",
+      "params": {},
+      "ok": true,
+      "ms": 60,
+      "result": {
+        "active_layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b",
+        "active_layer_name": "Head",
+        "layer_ids": [
+          "aa1894c0-1919-45c4-8a0d-bbe31201e615",
+          "e52f45be-6b6b-4efe-9abf-e464ec333eb3",
+          "782f2e5c-4031-4ebb-9a91-b24bba03e0bb",
+          "f65688f0-d327-4f14-939a-dda6e24df94b",
+          "cbba47ba-231d-4765-88e5-25ff633981d5",
+          "3cb2a881-2669-4d34-bf31-46d760d36b8c",
+          "ed087033-16d2-4304-992a-5481f609a25f",
+          "ce637781-f7e4-4eb0-a491-d979b7431c78",
+          "fc691e1b-9d0e-4b48-9f7a-dc66206256d6",
+          "9ca00453-c219-4c6e-9f3a-9ffa0ffc4545",
+          "c4bb427c-544e-4bc0-8f47-0feb41f91a74",
+          "51b55ffb-8e48-4661-b8ca-da0f2362a7e9",
+          "e29ccf5c-61ad-441a-8279-a0c67d923a56"
+        ],
+        "semantics": "timeline-layer-selection"
+      }
+    },
+    {
+      "step": "read_telemetry",
+      "command": "telemetry_read",
+      "params": {
+        "controller_ids": [
+          "pelvis",
+          "thigh_l"
+        ],
+        "frames": [
+          0
+        ]
+      },
+      "ok": true,
+      "ms": 140,
+      "result": {
+        "telemetry": {
+          "pelvis": {
+            "0": {
+              "position": [
+                0.0009238154743798077,
+                95.63358306884766,
+                -5.191793918609619
+              ],
+              "rotation": [
+                4.160368916927837e-06,
+                -0.9999234080314636,
+                0.012375591322779655,
+                7.0924356805335265e-06
+              ]
+            }
+          },
+          "thigh_l": {
+            "0": {
+              "position": [
+                -9.595067024230957,
+                -0.00054168701171875,
+                0.00021409988403320312
+              ],
+              "rotation": [
+                0.053924959152936935,
+                -0.0626896545290947,
+                0.9930460453033447,
+                0.08379523456096649
+              ]
+            }
+          }
+        },
+        "frames": [
+          0
+        ],
+        "missing": [],
+        "node_names": [
+          "Local Position",
+          "Local Rotation"
+        ]
+      }
+    },
+    {
+      "step": "read_telemetry_range",
+      "command": "telemetry_read_range",
+      "params": {
+        "controller_ids": [
+          "pelvis",
+          "thigh_l"
+        ],
+        "frame_start": 0,
+        "frame_end": 4,
+        "step": 2,
+        "local": true
+      },
+      "ok": true,
+      "ms": 130,
+      "result": {
+        "telemetry": {
+          "pelvis": {
+            "0": {
+              "position": [
+                0.0009238154743798077,
+                95.63358306884766,
+                -5.191793918609619
+              ],
+              "rotation": [
+                4.160368916927837e-06,
+                -0.9999234080314636,
+                0.012375591322779655,
+                7.0924356805335265e-06
+              ]
+            },
+            "2": {
+              "position_error": "getDataValue: cannot get value on frame 2 for data with id 9dd56254-fa73-4d83-bdbe-7568fb89e1aa, last frame in animation is 0",
+              "rotation_error": "getDataValue: cannot get value on frame 2 for data with id 814b4285-5acd-41ce-9e6a-4566b516ea7f, last frame in animation is 0"
+            },
+            "4": {
+              "position_error": "getDataValue: cannot get value on frame 4 for data with id 9dd56254-fa73-4d83-bdbe-7568fb89e1aa, last frame in animation is 0",
+              "rotation_error": "getDataValue: cannot get value on frame 4 for data with id 814b4285-5acd-41ce-9e6a-4566b516ea7f, last frame in animation is 0"
+            }
+          },
+          "thigh_l": {
+            "0": {
+              "position": [
+                -9.595067024230957,
+                -0.00054168701171875,
+                0.00021409988403320312
+              ],
+              "rotation": [
+                0.053924959152936935,
+                -0.0626896545290947,
+                0.9930460453033447,
+                0.08379523456096649
+              ]
+            },
+            "2": {
+              "position_error": "getDataValue: cannot get value on frame 2 for data with id db177831-fdc3-4af8-b72f-e3c391fe8df8, last frame in animation is 0",
+              "rotation_error": "getDataValue: cannot get value on frame 2 for data with id 89fc85dc-c342-4c02-be61-719117c58e2a, last frame in animation is 0"
+            },
+            "4": {
+              "position_error": "getDataValue: cannot get value on frame 4 for data with id db177831-fdc3-4af8-b72f-e3c391fe8df8, last frame in animation is 0",
+              "rotation_error": "getDataValue: cannot get value on frame 4 for data with id 89fc85dc-c342-4c02-be61-719117c58e2a, last frame in animation is 0"
+            }
+          }
+        },
+        "frames": [
+          0,
+          2,
+          4
+        ],
+        "missing": [],
+        "node_names": [
+          "Local Position",
+          "Local Rotation"
+        ]
+      }
+    },
+    {
+      "step": "frame_set",
+      "command": "frame_set",
+      "params": {
+        "frame": 3
+      },
+      "ok": true,
+      "ms": 59,
+      "result": {
+        "requested": 3,
+        "current_frame": 0
+      }
+    },
+    {
+      "step": "frame_get_after_set",
+      "command": "frame_get",
+      "params": {},
+      "ok": true,
+      "ms": 60,
+      "result": {
+        "current_frame": 0
+      }
+    },
+    {
+      "step": "schema_size",
+      "command": "schema_get",
+      "params": {},
+      "ok": true,
+      "ms": 72,
+      "result": {
+        "schema_json_size": 106448
+      }
+    },
+    {
+      "step": "undo",
+      "command": "undo",
+      "params": {},
+      "ok": true,
+      "ms": 58,
+      "result": {
+        "invoked": "Scene.Undo"
+      }
+    },
+    {
+      "step": "redo",
+      "command": "redo",
+      "params": {},
+      "ok": true,
+      "ms": 41,
+      "result": {
+        "invoked": "Scene.Redo"
+      }
+    },
+    {
+      "step": "screenshot_viewport",
+      "command": "viewport_screenshot",
+      "params": {
+        "path": "C:\\Users\\sandv\\Desktop\\poppet\\.live-shot.png"
+      },
+      "ok": true,
+      "ms": 49,
+      "result": {
+        "path": "C:/Users/sandv/Desktop/poppet/.live-shot.png",
+        "exists": true,
+        "size_bytes": 2207359,
+        "render_started": true,
+        "method": "RenderToFile.take_image"
+      }
+    },
+    {
+      "step": "keyframe_set_position",
+      "command": "keyframe_set",
+      "params": {
+        "controller_id": "pelvis",
+        "frame": 5,
+        "transform": {
+          "position": [
+            0.0,
+            95.0,
+            -5.0
+          ]
+        }
+      },
+      "ok": true,
+      "ms": 813,
+      "result": {
+        "controller": "pelvis",
+        "obj_id": "ad915519-cc6c-49df-be58-8f223d2735fc",
+        "applied": {
+          "position": true,
+          "rotation": false,
+          "frame": 5,
+          "position_new": [
+            0.0,
+            95.0,
+            -5.0
+          ]
+        },
+        "attrs_updated": 1
+      }
+    },
+    {
+      "step": "object_transform_after_set",
+      "command": "object_transform_get",
+      "params": {
+        "object_name": "pelvis",
+        "frame": 5
+      },
+      "ok": true,
+      "ms": 137,
+      "result": {
+        "object": "pelvis",
+        "frame": 5,
+        "position": [
+          0.00046023607137613,
+          95.49468231201172,
+          -5.096561908721924
+        ],
+        "rotation": [
+          9.413542102265637e-06,
+          0.9998862147331238,
+          -0.01508436631411314,
+          -2.5621613986004377e-06
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "step": "set_controller_scale",
+      "command": "controller_scale_set",
+      "params": {
+        "controller_id": "pelvis",
+        "frame": 5,
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "ok": true,
+      "ms": 150,
+      "result": {
+        "controller": "pelvis",
+        "obj_id": "ad915519-cc6c-49df-be58-8f223d2735fc",
+        "applied": {
+          "frame": 5,
+          "scale_new": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "scale_set": true
+        },
+        "attrs_updated": 1
+      }
+    },
+    {
+      "step": "add_keyframe",
+      "command": "keyframe_add",
+      "params": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "frame": 7
+      },
+      "ok": true,
+      "ms": 80,
+      "result": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "frame": 7,
+        "added": true
+      }
+    },
+    {
+      "step": "remove_keyframe",
+      "command": "keyframe_remove",
+      "params": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "frame": 7
+      },
+      "ok": true,
+      "ms": 80,
+      "result": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "frame": 7,
+        "removed": true
+      }
+    },
+    {
+      "step": "bake_range",
+      "command": "bake_range",
+      "params": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "frame_start": 0,
+        "frame_end": 2
+      },
+      "ok": true,
+      "ms": 61,
+      "result": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "frame_start": 0,
+        "frame_end": 2,
+        "baked_count": 3
+      }
+    },
+    {
+      "step": "layer_hide",
+      "command": "layer_visible_set",
+      "params": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "visible": false
+      },
+      "ok": true,
+      "ms": 71,
+      "result": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "visible": false,
+        "method": "set_visible_for_layer"
+      }
+    },
+    {
+      "step": "layer_show",
+      "command": "layer_visible_set",
+      "params": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "visible": true
+      },
+      "ok": true,
+      "ms": 70,
+      "result": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "visible": true,
+        "method": "set_visible_for_layer"
+      }
+    },
+    {
+      "step": "layer_lock",
+      "command": "layer_locked_set",
+      "params": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "locked": true
+      },
+      "ok": true,
+      "ms": 69,
+      "result": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "locked": true,
+        "method": "set_locked_for_layer"
+      }
+    },
+    {
+      "step": "layer_unlock",
+      "command": "layer_locked_set",
+      "params": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "locked": false
+      },
+      "ok": true,
+      "ms": 80,
+      "result": {
+        "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
+        "locked": false,
+        "method": "set_locked_for_layer"
+      }
+    },
+    {
+      "step": "add_layer",
+      "command": "layer_add",
+      "params": {
+        "name": "poppet_live_test"
+      },
+      "ok": true,
+      "ms": 111,
+      "result": {
+        "name": "poppet_live_test",
+        "layer_id": "6f3dbd1e-7be2-446e-aef0-5085dfb5e5b5",
+        "created": true
+      }
+    },
+    {
+      "step": "delete_layer",
+      "command": "layer_delete",
+      "params": {
+        "layer_id": "6f3dbd1e-7be2-446e-aef0-5085dfb5e5b5"
+      },
+      "ok": true,
+      "ms": 88,
+      "result": {
+        "layer_id": "6f3dbd1e-7be2-446e-aef0-5085dfb5e5b5",
+        "deleted": true,
+        "method": "delete_layer"
+      }
+    },
+    {
+      "step": "duplicate_object",
+      "command": "object_duplicate",
+      "ok": false,
+      "ms": 26493,
+      "error": "RuntimeError: Cascadeur rejected 'Poppet: duplicate object': the modify callback failed (traceback is in Cascadeur's event log)\n\nIn-app traceback:\nTraceback (most recent call last):\n  File \"<poppet_rt>\", line 92, in _dispatch_legacy\n  File \"<poppet_rt>\", line 1295, in _d_object_duplicate\n  File \"<poppet_rt>\", line 169, in _checked_modify\nRuntimeError: Cascadeur rejected 'Poppet: duplicate object': the modify callback failed (traceback is in Cascadeur's event log)\n"
+    },
+    {
+      "step": "autopose",
+      "command": "autopose_run",
+      "params": {},
+      "ok": true,
+      "ms": 71,
+      "result": {
+        "invoked": "AutoPosingTool.AutoPosing"
+      }
+    },
+    {
+      "step": "export_fbx",
+      "command": "fbx_export",
+      "params": {
+        "path": "C:/Users/sandv/Desktop/poppet/.live-cascy.fbx"
+      },
+      "ok": true,
+      "ms": 207,
+      "result": {
+        "path": "C:/Users/sandv/Desktop/poppet/.live-cascy.fbx",
+        "exists": true,
+        "size_bytes": 2998416,
+        "settings": {
+          "mode": "Binary",
+          "up_axis": "Y",
+          "bake_animation": true,
+          "apply_euler_filter": true
+        }
+      }
+    },
+    {
+      "step": "save_scene_copy",
+      "command": "save_scene",
+      "params": {
+        "path": "C:/Users/sandv/Desktop/poppet/.live-cascy-copy.casc"
+      },
+      "ok": true,
+      "ms": 1321,
+      "result": {
+        "path": "C:/Users/sandv/Desktop/poppet/.live-cascy-copy.casc",
+        "method": "view.Scene.save",
+        "exists": true,
+        "size_bytes": 4068639,
+        "saved": true,
+        "save_pending": false
+      }
+    },
+    {
+      "step": "undo_after_mutations",
+      "command": "undo",
+      "params": {},
+      "ok": true,
+      "ms": 161,
+      "result": {
+        "invoked": "Scene.Undo"
+      }
+    }
+  ]
+}
