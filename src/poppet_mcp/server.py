@@ -1,13 +1,17 @@
-"""Poppet MCP server.
+"""Poppet MCP server — the tool layer for Cascadeur 2026.2+.
 
-FastMCP frontend that translates Claude's tool calls into commands for the
-Cascadeur-side Poppet listener (cascadeur_side/poppet/_listener.py).
+Runs as a normal stdio MCP server (``poppet-mcp``) next to any MCP client. Every
+tool call is translated into a JSON command and handed to Poppet's in-app runtime
+running inside Cascadeur, via Cascadeur's **built-in** MCP script server
+(``Scripts -> MCP -> Start script server``, loopback HTTP on port 8765).
 
-Run via: `uvx poppet-mcp` (or `python -m poppet_mcp.server`).
+There is no Cascadeur-side install: on the first call the connection layer ships
+the runtime source (``poppet_mcp/runtime/inapp.py``) into Cascadeur and executes
+it as a private module. See ``docs/architecture.md`` for the full story.
 
 Environment:
-  POPPET_HOST  default 127.0.0.1
-  POPPET_PORT  default 53145
+  POPPET_URL      default http://127.0.0.1:8765
+  POPPET_TIMEOUT  default 35 seconds (the script server caps a call at ~30s)
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from poppet_mcp.cascadeur_connection import CascadeurConnection
+from poppet_mcp.runtime import runtime_version
 
 mcp = FastMCP("poppet")
 _conn: CascadeurConnection | None = None
@@ -27,30 +32,86 @@ def _connection() -> CascadeurConnection:
     global _conn
     if _conn is None:
         _conn = CascadeurConnection(
-            timeout=float(os.environ.get("POPPET_TIMEOUT", "60")),
-            poll_interval=float(os.environ.get("POPPET_POLL_INTERVAL", "0.1")),
+            timeout=float(os.environ.get("POPPET_TIMEOUT", "35")),
+            url=os.environ.get("POPPET_URL") or None,
         )
     return _conn
 
 
 def _call(command: str, **params: Any) -> Any:
+    """Send one command to the in-app runtime and return its result payload."""
     return _connection().request(command, params)
 
 
 # ----------------------------------------------------------------------------
-# Core
+# Diagnostics
+# ----------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_script_server_status() -> dict:
+    """Check the Poppet <-> Cascadeur link and report both sides' versions.
+
+    Returns ``connected`` (bool), the loopback ``url``, the script server's
+    ``server_version``, the loaded in-app ``runtime_version``, the embedded
+    ``python`` version, and ``has_scene``. When the link is down, ``error``
+    carries the actionable reason (usually: start the script server in Cascadeur).
+    """
+    connection = _connection()
+    status: dict[str, Any] = {
+        "connected": False,
+        "url": connection.url,
+        "expected_runtime_version": runtime_version(),
+    }
+    try:
+        health = connection.health()
+    except Exception as exc:
+        status["error"] = str(exc)
+        return status
+    status["connected"] = True
+    status["server_version"] = health.get("version")
+    status["queued"] = health.get("queued")
+    try:
+        status.update(connection.request("ping"))
+    except Exception as exc:
+        status["ping_error"] = str(exc)
+    return status
+
+
+@mcp.tool()
+def run_script(code: str) -> dict:
+    """Run raw Python inside Cascadeur and return the script server's raw reply.
+
+    This is the untyped escape hatch and the lowest-level tool: it submits
+    ``code`` straight to Cascadeur's built-in script server, which executes it on
+    the next ``scene_idle`` event with ``csc``, ``scene`` and ``app`` in scope.
+    An expression's value is returned ``repr``-encoded in ``value``.
+
+    Returns the script server's own response dict:
+    ``{"ok": bool, "value": str, "messages": [...], "error": str?}``.
+    Failures (including Python tracebacks) come back with ``ok: false`` — they
+    are raised in-app while the HTTP call still succeeds.
+
+    Cascadeur caps a call at roughly 30 seconds, so keep scripts short. Prefer
+    the typed tools; use this for discovery or one-off operations.
+    """
+    return _connection().run_script(code)
+
+
+# ----------------------------------------------------------------------------
+# Core scene / selection
 # ----------------------------------------------------------------------------
 
 
 @mcp.tool()
 def get_scene_info() -> dict:
-    """Get basic Cascadeur scene info — name, frame count, fps, whether a scene is open."""
+    """Get scene summary: name, frame range, current frame, object and layer counts."""
     return _call("scene_info")
 
 
 @mcp.tool()
 def get_selection() -> dict:
-    """Get the currently selected objects/controllers in the scene."""
+    """List the currently selected objects/controllers (id, name, type)."""
     return _call("selection_get")
 
 
@@ -58,8 +119,8 @@ def get_selection() -> dict:
 def set_selection(object_names: list[str]) -> dict:
     """Replace the current selection with the given object names.
 
-    Reports any names that couldn't be matched in `missing`. Wraps the change
-    in a Cascadeur session for undo support.
+    Missing names are reported in ``missing``; the change is wrapped in a
+    Cascadeur session so it participates in undo.
     """
     return _call("selection_set", object_names=object_names)
 
@@ -72,75 +133,75 @@ def clear_selection() -> dict:
 
 @mcp.tool()
 def list_objects(name_contains: str | None = None) -> dict:
-    """List all scene objects (id, name, type). Optional `name_contains` filter."""
+    """List scene objects as ``{id, name, type}``, optionally filtered by substring."""
     return _call("objects_list", name_contains=name_contains)
 
 
 @mcp.tool()
 def get_current_frame() -> dict:
-    """Return the current playhead frame index."""
+    """Return the playhead frame index."""
     return _call("frame_get")
 
 
 @mcp.tool()
 def set_current_frame(frame: int) -> dict:
-    """Move the playhead to the given frame index."""
+    """Move the playhead to ``frame``.
+
+    Readback of ``current_frame`` can lag one drain behind the visual playhead;
+    trust the viewport, not the number, immediately after the call.
+    """
     return _call("frame_set", frame=frame)
 
 
 @mcp.tool()
-def execute_csc_code(code: str) -> dict:
-    """Run arbitrary Python in Cascadeur's embedded interpreter.
-
-    `csc` and `scene` are available in the exec namespace. Returns repr of the
-    last expression value (if `code` is an expression) or {"repr": "None"} (if a
-    statement). Wrap mutations in `scene.modify_with_session(lambda s: ...)` to
-    keep undo working.
-
-    Use this as an escape hatch when no higher-level tool fits.
-    """
-    return _call("exec_csc", code=code)
-
-
-@mcp.tool()
 def call_action(action_id: str) -> dict:
-    """Invoke a Cascadeur action by ID (any menu/toolbar command).
+    """Invoke any Cascadeur menu/toolbar action by its ID.
 
-    Examples: "Scene.Undo", "File.Save", "AutoPosingTool.AutoPosing",
-    "AutoPhysicsTool.Snap to Auto Physics", "Timeline.Play",
-    "Viewport.FOV increase".
-
-    Full list: https://cascadeur.com/help/category/301
-
-    Note: actions are fire-and-forget — no return value, no completion signal.
-    For AutoPhysics specifically, use `run_autophysics()` which polls for
-    convergence after invoking.
+    Examples: ``Scene.Undo``, ``File.Save``, ``AutoPosingTool.AutoPosing``,
+    ``AutoPhysicsTool.Snap to Auto Physics``. Actions are fire-and-forget: there
+    is no completion signal. Use ``run_autophysics()`` when you need to wait for
+    a solver to finish. Action ID catalog: https://cascadeur.com/help/category/301
     """
     return _call("call_action", action_id=action_id)
 
 
+@mcp.tool()
+def execute_csc_code(code: str) -> dict:
+    """Execute Python in Cascadeur's embedded interpreter (typed escape hatch).
+
+    Runs through Poppet's in-app runtime, so ``csc`` and ``scene`` are available.
+    Returns the expression value (or ``None`` for statements). Prefer ``run_script``
+    if you want the script server's raw response instead, and wrap mutations in
+    ``scene.modify_with_session(...)`` to keep undo working.
+    """
+    return _call("exec_csc", code=code)
+
+
 # ----------------------------------------------------------------------------
-# Animation layers / keyframes
+# Layers and keyframes
 # ----------------------------------------------------------------------------
 
 
 @mcp.tool()
 def list_layers() -> dict:
-    """List animation layers (tracks) in the current scene."""
+    """List animation layers with their ids, names and keyframe counts."""
     return _call("layers_list")
 
 
 @mcp.tool()
 def get_keyframes(layer_id: str, frame_start: int, frame_end: int) -> dict:
-    """Get keyframes on a layer between frame_start and frame_end (inclusive)."""
+    """Return the keyframe frames on ``layer_id`` inside the inclusive range."""
     return _call("keyframes_get", layer_id=layer_id, frame_start=frame_start, frame_end=frame_end)
 
 
 @mcp.tool()
 def set_controller_position(controller_id: str, frame: int, x: float, y: float, z: float) -> dict:
-    """Set a controller's world-space position at the given frame."""
+    """Set a controller's world-space position at ``frame`` (creates a key)."""
     return _call(
-        "keyframe_set", controller_id=controller_id, frame=frame, transform={"position": [x, y, z]}
+        "keyframe_set",
+        controller_id=controller_id,
+        frame=frame,
+        transform={"position": [x, y, z]},
     )
 
 
@@ -148,76 +209,12 @@ def set_controller_position(controller_id: str, frame: int, x: float, y: float, 
 def set_controller_rotation(
     controller_id: str, frame: int, qx: float, qy: float, qz: float, qw: float
 ) -> dict:
-    """Set a controller's rotation (quaternion) at the given frame."""
+    """Set a controller's rotation as a quaternion ``(x, y, z, w)`` at ``frame``."""
     return _call(
         "keyframe_set",
         controller_id=controller_id,
         frame=frame,
         transform={"rotation": [qx, qy, qz, qw]},
-    )
-
-
-@mcp.tool()
-def add_keyframe(layer_id: str, frame: int) -> dict:
-    """Add a keyframe on `layer_id` at `frame`.
-
-    Routes to the dedicated keyframe_add dispatcher (v0.4) — uses
-    `session.layers_editor().set_fixed_interpolation_or_key_if_need(...)`,
-    same path bake_range uses but for a single frame.
-    """
-    return _call("keyframe_add", layer_id=layer_id, frame=frame)
-
-
-@mcp.tool()
-def remove_keyframe(layer_id: str, frame: int) -> dict:
-    """Remove the keyframe at `frame` on `layer_id`.
-
-    Routes to the dedicated keyframe_remove dispatcher (v0.4) — uses
-    `session.layers_editor().unset_section(frame, layer_id)`, pattern
-    from bundled commands/animation_scripts/keyframe_reduction.py.
-    """
-    return _call("keyframe_remove", layer_id=layer_id, frame=frame)
-
-
-@mcp.tool()
-def selection_extend(object_names: list[str]) -> dict:
-    """Add object names to the current selection (set union).
-
-    Returns added names, missing names, and the new selection_count.
-    """
-    return _call("selection_extend", object_names=object_names)
-
-
-@mcp.tool()
-def selection_subtract(object_names: list[str]) -> dict:
-    """Remove object names from the current selection (set difference).
-
-    Returns removed names, missing names, and the new selection_count.
-    """
-    return _call("selection_subtract", object_names=object_names)
-
-
-@mcp.tool()
-def read_telemetry_range(
-    controller_ids: list[str],
-    frame_start: int,
-    frame_end: int,
-    step: int = 1,
-    local: bool = True,
-) -> dict:
-    """Read controller transforms across a frame range (inclusive endpoints).
-
-    More efficient than calling read_telemetry once per frame because the
-    update graph is walked a single time. `step` lets you sample every Nth
-    frame for sparse reads.
-    """
-    return _call(
-        "telemetry_read_range",
-        controller_ids=controller_ids,
-        frame_start=frame_start,
-        frame_end=frame_end,
-        step=step,
-        local=local,
     )
 
 
@@ -230,11 +227,7 @@ def set_controller_scale(
     sz: float,
     local: bool = True,
 ) -> dict:
-    """Set a controller's Local Scale (or Scale) at the given frame.
-
-    Mirrors set_controller_position but writes to the Scale node.
-    Useful for stretchy IK or non-uniform-scale targets.
-    """
+    """Set a controller's scale at ``frame`` (useful for stretchy IK targets)."""
     return _call(
         "controller_scale_set",
         controller_id=controller_id,
@@ -244,45 +237,108 @@ def set_controller_scale(
     )
 
 
+@mcp.tool()
+def add_keyframe(layer_id: str, frame: int) -> dict:
+    """Add a keyframe on ``layer_id`` at ``frame`` using fixed interpolation."""
+    return _call("keyframe_add", layer_id=layer_id, frame=frame)
+
+
+@mcp.tool()
+def remove_keyframe(layer_id: str, frame: int) -> dict:
+    """Remove the keyframe at ``frame`` on ``layer_id``."""
+    return _call("keyframe_remove", layer_id=layer_id, frame=frame)
+
+
+@mcp.tool()
+def bake_range(layer_id: str, frame_start: int, frame_end: int) -> dict:
+    """Bake per-frame keys across an inclusive range on ``layer_id``.
+
+    Converts interpolated motion into discrete keys — use after procedurally
+    modifying an interval, before exporting.
+    """
+    return _call("bake_range", layer_id=layer_id, frame_start=frame_start, frame_end=frame_end)
+
+
 # ----------------------------------------------------------------------------
-# AutoPosing / AutoPhysics — the spec §4 closed loop
+# Telemetry
+# ----------------------------------------------------------------------------
+
+
+@mcp.tool()
+def read_telemetry(controller_ids: list[str], frames: list[int]) -> dict:
+    """Read position + rotation (Euler) of controllers at specific frames.
+
+    The feedback half of the AutoPosing/AutoPhysics loop: read what the solver
+    produced, then correct drift or timing.
+    """
+    return _call("telemetry_read", controller_ids=controller_ids, frames=frames)
+
+
+@mcp.tool()
+def read_telemetry_range(
+    controller_ids: list[str],
+    frame_start: int,
+    frame_end: int,
+    step: int = 1,
+    local: bool = True,
+) -> dict:
+    """Read controller transforms across a frame range in one update-graph walk.
+
+    ``step`` samples every Nth frame; endpoints are inclusive. Much cheaper than
+    calling ``read_telemetry`` once per frame.
+    """
+    return _call(
+        "telemetry_read_range",
+        controller_ids=controller_ids,
+        frame_start=frame_start,
+        frame_end=frame_end,
+        step=step,
+        local=local,
+    )
+
+
+@mcp.tool()
+def get_object_transform(object_name: str, frame: int = 0, local: bool = True) -> dict:
+    """Read Position + Rotation + Scale for one object at ``frame``."""
+    return _call("object_transform_get", object_name=object_name, frame=frame, local=local)
+
+
+@mcp.tool()
+def list_object_attributes(object_name: str) -> dict:
+    """List every attribute node on an object's root group.
+
+    Discovery aid: tells you which attributes (Position, Rotation, Local Scale,
+    IK weights, ...) exist before you address one in ``execute_csc_code``.
+    """
+    return _call("object_attributes_list", object_name=object_name)
+
+
+# ----------------------------------------------------------------------------
+# AutoPosing / AutoPhysics
 # ----------------------------------------------------------------------------
 
 
 @mcp.tool()
 def run_autoposing() -> dict:
-    """Run AutoPosing — resolves natural joint rotations from active control points.
+    """Run AutoPosing on the current frame.
 
-    Near-instant for the current frame. Use after setting sparse milestone
-    positions on hip/foot/hand controllers to let Cascadeur fill in plausible
-    intermediate joint angles.
+    Resolves natural joint rotations from the active control points. Near-instant
+    per frame: set sparse milestone hips/hands/feet, then autopose.
     """
     return _call("autopose_run")
 
 
 @mcp.tool()
 def run_autophysics(timeout_sec: float = 30.0) -> dict:
-    """Run AutoPhysics across the timeline and wait for convergence.
+    """Run AutoPhysics across the timeline and report convergence.
 
-    Wraps `AutoPhysicsTool.Snap to Auto Physics`. Since action invocations
-    return no completion signal, this tool polls scene state and returns when
-    stable (or `{"converged": false, "status": "timeout"}` after `timeout_sec`).
-
-    Use this after AutoPosing to apply gravity, floor collisions, and momentum
-    to the animation.
+    Wraps ``AutoPhysicsTool.Snap to Auto Physics`` and polls scene state until it
+    stabilises, or returns ``{"converged": false, "status": "timeout"}``.
+    Keep ``timeout_sec`` under the script server's ~30s per-call cap (~25s is a
+    safe budget); for longer solves, call again or use the timestamped
+    ``Scene.SnapToPhysics*`` actions with ``call_action``.
     """
     return _call("autophysics_run", timeout_sec=timeout_sec)
-
-
-@mcp.tool()
-def read_telemetry(controller_ids: list[str], frames: list[int]) -> dict:
-    """Read world-space positions and rotations of controllers at given frames.
-
-    Closes the spec §4 loop — after AutoPosing + AutoPhysics, read what the
-    solver produced and feed the result back to the model so it can correct
-    drift or refine timing.
-    """
-    return _call("telemetry_read", controller_ids=controller_ids, frames=frames)
 
 
 # ----------------------------------------------------------------------------
@@ -292,17 +348,21 @@ def read_telemetry(controller_ids: list[str], frames: list[int]) -> dict:
 
 @mcp.tool()
 def import_fbx(path: str, target: str = "scene") -> dict:
-    """Import an FBX file into the current scene.
+    """Import an FBX file.
 
-    target = "scene" (default) loads the entire file as scene contents.
-    target = "animation" imports animation only into the current scene.
+    ``target="scene"`` loads the whole file as scene contents;
+    ``target="animation"`` imports animation only into the current scene.
     """
     return _call("fbx_import", path=path, target=target)
 
 
 @mcp.tool()
 def export_fbx(path: str) -> dict:
-    """Export the current scene to an FBX file (binary, Y-up, baked animation)."""
+    """Export the current scene to a binary FBX (baked animation, Y-up).
+
+    Large scenes can exceed the script server's ~30s call cap. If the call times
+    out the export may still be in progress — check the file before retrying.
+    """
     return _call("fbx_export", path=path)
 
 
@@ -313,73 +373,87 @@ def export_fbx(path: str) -> dict:
 
 @mcp.tool()
 def save_scene(path: str) -> dict:
-    """Save the current scene to a .casc file via DataSourceManager."""
+    """Save the current scene to a ``.casc`` file."""
     return _call("save_scene", path=path)
 
 
 @mcp.tool()
 def load_scene(path: str) -> dict:
-    """Open a .casc file in Cascadeur via DataSourceManager."""
+    """Open a ``.casc`` file, replacing the current scene."""
     return _call("load_scene", path=path)
 
 
 @mcp.tool()
 def new_scene() -> dict:
-    """Create a fresh empty scene via SceneManager.create_application_scene."""
+    """Create a fresh empty scene."""
     return _call("new_scene")
 
 
 # ----------------------------------------------------------------------------
-# Object hierarchy + transforms
+# Hierarchy
 # ----------------------------------------------------------------------------
 
 
 @mcp.tool()
 def get_object_hierarchy() -> dict:
-    """Walk the scene's object hierarchy returning parent + children per object.
+    """Return the object hierarchy as ``{id, name, parent_id, child_ids}`` rows.
 
-    Use this to understand the rig structure (which controllers attach to which
-    joints, what's parented to what) without introspecting csc.* directly.
+    Use it to understand the rig structure — which controllers attach to which
+    joints — without introspecting ``csc.*`` by hand.
     """
     return _call("object_hierarchy")
 
 
-@mcp.tool()
-def get_object_transform(object_name: str, frame: int = 0, local: bool = True) -> dict:
-    """Read Position+Rotation+Scale on a single object at a frame.
-
-    Variant of read_telemetry for one object — returns all three transforms at
-    once instead of just position+rotation across a frame range.
-    """
-    return _call("object_transform_get", object_name=object_name, frame=frame, local=local)
-
-
-@mcp.tool()
-def list_object_attributes(object_name: str) -> dict:
-    """List all attribute node names on an object's root_group.
-
-    Use this to discover what's settable on a controller (Position, Rotation,
-    Local Scale, IK weights, controller weights, etc.) before guessing names
-    in execute_csc_code.
-    """
-    return _call("object_attributes_list", object_name=object_name)
-
-
 # ----------------------------------------------------------------------------
-# Layer ops
+# Layer state
 # ----------------------------------------------------------------------------
 
 
 @mcp.tool()
 def set_layer_visible(layer_id: str, visible: bool) -> dict:
-    """Toggle visibility on an animation layer."""
+    """Show/hide an animation layer."""
     return _call("layer_visible_set", layer_id=layer_id, visible=visible)
 
 
 @mcp.tool()
 def set_layer_locked(layer_id: str, locked: bool) -> dict:
-    """Toggle lock on an animation layer."""
+    """Lock/unlock an animation layer against edits."""
     return _call("layer_locked_set", layer_id=layer_id, locked=locked)
+
+
+@mcp.tool()
+def add_layer(name: str, parent_id: str | None = None) -> dict:
+    """Create a new animation layer under the scene root (or ``parent_id``)."""
+    return _call("layer_add", name=name, parent_id=parent_id)
+
+
+@mcp.tool()
+def delete_layer(layer_id: str) -> dict:
+    """Delete an animation layer by id."""
+    return _call("layer_delete", layer_id=layer_id)
+
+
+@mcp.tool()
+def get_active_layer() -> dict:
+    """Return the timeline layer selection (layer-editor semantics).
+
+    Cascadeur 2026.2 has no separate "active editing layer" object; Poppet maps
+    this tool to the timeline layers selection: the included layer ids plus the
+    top layer. Responses carry ``"semantics": "timeline-layer-selection"`` with
+    layer ids, names and key counts.
+    """
+    return _call("active_layer_get")
+
+
+@mcp.tool()
+def set_active_layer(layer_id: str) -> dict:
+    """Select a single timeline layer (see ``get_active_layer``).
+
+    Replaces the timeline layer selection with ``layer_id``; timeline keyframes
+    then land on that layer. Same ``"semantics": "timeline-layer-selection"``
+    contract.
+    """
+    return _call("active_layer_set", layer_id=layer_id)
 
 
 # ----------------------------------------------------------------------------
@@ -389,106 +463,70 @@ def set_layer_locked(layer_id: str, locked: bool) -> dict:
 
 @mcp.tool()
 def delete_object(object_name: str) -> dict:
-    """Delete an object by name.
-
-    Tries `model_editor.delete_objects([oid])` first, falls back to
-    `Scene.Edit.Delete` action after selecting the object.
-    """
+    """Delete an object (and its subtree) by name."""
     return _call("object_delete", object_name=object_name)
 
 
 @mcp.tool()
 def duplicate_object(object_name: str) -> dict:
-    """Duplicate an object by name via `Scene.Edit.Duplicate`.
-
-    Returns the names of objects that newly appeared in the scene.
-    """
+    """Duplicate an object and return the newly created object names."""
     return _call("object_duplicate", object_name=object_name)
 
 
 # ----------------------------------------------------------------------------
-# Viewport screenshot
+# Selection helpers
 # ----------------------------------------------------------------------------
-
-
-@mcp.tool()
-def screenshot_viewport(path: str | None = None) -> dict:
-    """Capture the 3D viewport to an image file.
-
-    Tries csc.tools.RenderToFile.editor.take_image first, falls back to
-    Viewport.* action IDs. Path must be absolute; PNG recommended.
-    If omitted, a temp file is auto-generated.
-    """
-    return _call("viewport_screenshot", path=path)
-
-
-# ----------------------------------------------------------------------------
-# Layer create / delete + undo / redo + range bake (v0.3)
-# ----------------------------------------------------------------------------
-
-
-@mcp.tool()
-def add_layer(name: str, parent_id: str | None = None) -> dict:
-    """Create a new animation layer with `name`.
-
-    If `parent_id` is omitted, the layer is created under the scene root.
-    Returns the new layer's stringified id so subsequent calls can address it.
-    """
-    return _call("layer_add", name=name, parent_id=parent_id)
-
-
-@mcp.tool()
-def delete_layer(layer_id: str) -> dict:
-    """Delete a layer by id (use `list_layers()` to find an id first)."""
-    return _call("layer_delete", layer_id=layer_id)
-
-
-@mcp.tool()
-def undo() -> dict:
-    """Invoke Cascadeur's Scene.Undo action (reverse the last change)."""
-    return _call("undo")
-
-
-@mcp.tool()
-def redo() -> dict:
-    """Invoke Cascadeur's Scene.Redo action."""
-    return _call("redo")
 
 
 @mcp.tool()
 def selection_filter(pattern: str, mode: str = "contains") -> dict:
-    """Replace the selection with objects whose name matches `pattern`.
+    """Replace the selection with objects whose name matches ``pattern``.
 
-    mode is one of: contains (default), prefix, suffix, regex.
-    Useful for batch ops — e.g. `selection_filter("_Box", "suffix")` selects
-    every controller, `selection_filter("foot_Box_", "prefix")` selects both
-    feet, etc. Returns the count + first 50 matched names.
+    ``mode`` is one of ``contains`` (default), ``prefix``, ``suffix``, ``regex``.
+    Handy for batch work, e.g. ``selection_filter("_Box", "suffix")`` selects
+    every box controller.
     """
     return _call("selection_filter", pattern=pattern, mode=mode)
 
 
 @mcp.tool()
-def get_active_layer() -> dict:
-    """Return id+name of the currently-active editing layer."""
-    return _call("active_layer_get")
+def selection_extend(object_names: list[str]) -> dict:
+    """Add names to the current selection (set union); reports ``missing`` names."""
+    return _call("selection_extend", object_names=object_names)
 
 
 @mcp.tool()
-def set_active_layer(layer_id: str) -> dict:
-    """Make a layer the active editing target (subsequent keyframe writes
-    land on it). Pass an id from list_layers."""
-    return _call("active_layer_set", layer_id=layer_id)
+def selection_subtract(object_names: list[str]) -> dict:
+    """Remove names from the current selection (set difference)."""
+    return _call("selection_subtract", object_names=object_names)
+
+
+# ----------------------------------------------------------------------------
+# Undo / viewport
+# ----------------------------------------------------------------------------
 
 
 @mcp.tool()
-def bake_range(layer_id: str, frame_start: int, frame_end: int) -> dict:
-    """Bake per-frame keyframes across [frame_start, frame_end] on a layer.
+def undo() -> dict:
+    """Invoke Cascadeur's undo (``Scene.Undo``)."""
+    return _call("undo")
 
-    Uses `layers_editor.set_fixed_interpolation_or_key_if_need(...)` from
-    Cascadeur's bundled reverse_animation.py pattern. Useful when you want
-    to commit a procedural-interpolation curve to discrete keys.
+
+@mcp.tool()
+def redo() -> dict:
+    """Invoke Cascadeur's redo (``Scene.Redo``)."""
+    return _call("redo")
+
+
+@mcp.tool()
+def screenshot_viewport(path: str | None = None) -> dict:
+    """Capture the 3D viewport to a PNG and return the written path.
+
+    If ``path`` is omitted a timestamped file is generated. The response reports
+    the method that actually produced the image; screenshot capability depends on
+    the Cascadeur build, so check ``exists``.
     """
-    return _call("bake_range", layer_id=layer_id, frame_start=frame_start, frame_end=frame_end)
+    return _call("viewport_screenshot", path=path)
 
 
 # ----------------------------------------------------------------------------
@@ -498,11 +536,11 @@ def bake_range(layer_id: str, frame_start: int, frame_end: int) -> dict:
 
 @mcp.resource("csc://schema")
 def csc_schema() -> str:
-    """Live-introspected csc.* signature JSON from the user's actual Cascadeur install.
+    """Live ``csc.*`` API surface from the running Cascadeur, as JSON.
 
-    Use this as ground truth for the csc API surface — the help-site docs lag,
-    this doesn't. Generated by the `Poppet → Refresh Schema` command (and
-    cached at first read).
+    Dumped by Poppet's in-app runtime at read time, so it matches the exact
+    Cascadeur version you are driving — use it as ground truth for any
+    ``execute_csc_code`` / ``run_script`` work.
     """
     result = _call("schema_get")
     return result.get("schema_json", "{}")

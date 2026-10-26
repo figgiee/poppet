@@ -1,108 +1,195 @@
-# Poppet architecture deep dive
+# Poppet architecture (1.0)
 
-This is the long version of the README's architecture section. Read it if you want to understand why the design looks the way it does — or if you're considering forking for a different DCC app.
+Poppet 1.0 is a typed MCP front end over **Cascadeur 2026.2's built-in MCP script
+server**. The Cascadeur side of Poppet has no install step: it is source text that
+the MCP server ships into Cascadeur on the first tool call and executes as a
+private module (`poppet_rt`).
 
 ## TL;DR
 
-Two processes, three files, one polling loop.
-
-- **`poppet-mcp`** runs out-of-process. Modern Python 3.11+. Speaks MCP stdio to Claude (or any MCP client). Knows nothing about Cascadeur except where its `%LOCALAPPDATA%` directory is.
-- **`poppet`** package lives in Cascadeur's `user_scripts/` directory. Runs inside Cascadeur's embedded Python 3.8 interpreter. Speaks Cascadeur's `csc.*` API directly.
-- They talk by writing `request<uuid>.json` and `response<uuid>.json` files to `%LOCALAPPDATA%\poppet-mcp\`. The MCP server writes requests, polls for responses. Cascadeur drains the requests directory whenever a `scene_activated` / `scene_opened` event fires (or whenever a user clicks `Commands → Poppet → Process Pending`).
-
-## Why not sockets?
-
-This was the v0 design, and it died fast against three independent constraints:
-
-1. **No PySide bundled in Cascadeur 2025.3.3.** Cascadeur is a Qt6/C++ app with an embedded CPython 3.8, but Python has zero PySide. So no `QTimer`, no `QApplication.instance()`, no `QMetaObject.invokeMethod`.
-
-2. **No csc-side main-thread scheduler.** We grep'd 115 candidate methods on `csc.*` looking for something like `post_to_main_thread(callable)` or `schedule_on_qt(...)`. Nothing matches. `csc.update.SceneUpdater` is a DAG of attributes, not an event loop.
-
-3. **Background Python threads only run their first GIL slice.** We verified this with a minimal `threading.Thread(target=lambda: while True: time.sleep(0.1); print("tick"))`. The first `print` fires; the second never does. Something in Cascadeur's embedded interpreter starves background threads indefinitely (probably a custom GIL host or a Qt thread that holds the GIL forever).
-
-So a TCP listener inside Cascadeur is impossible — there's no way to accept connections in the background.
-
-## What the file-sync design buys us
-
-Every operation routes through Cascadeur's normal command-invocation path. When a user clicks a menu item, Cascadeur calls the command's `run(scene)` function on the Qt main thread, with full csc.* access. We piggyback: our `Poppet.Process Pending` command runs on every drain, reads the queue, dispatches each request via `_dispatchers.dispatch(message, scene)`, and writes a response file.
-
-This gives us:
-
-- **No background threads.** Everything runs on the main thread under Cascadeur's existing command machinery.
-- **Undo support.** Mutations go through `scene.modify_with_session(label, mod)` or `scene.modify_update_with_session(label, mod)` — same as bundled commands — so they appear as proper Cascadeur undo steps.
-- **Atomic responses.** Responses are written to `<uuid>.json.tmp` then renamed to `<uuid>.json`, so a polling reader never sees half-written JSON.
-- **Survives Cascadeur restarts.** If Cascadeur crashes mid-drain, the unprocessed request files stay in the queue and drain on the next start.
-
-The cost is a per-request floor of ~25ms (write request, poll, read response). For a 50-request batch that's ~1.2s end-to-end — slow vs. a hot socket round-trip, but invisible inside a conversational Claude session where each turn is already taking ~5s of LLM latency.
-
-## Auto-drain via `scene_activated`
-
-Cascadeur fires `scene_activated` events whenever a scene tab gains focus. Crucially this includes when the Cascadeur **window** regains focus. We register a handler:
-
-```text
-cascadeur_side/poppet_events/scene_activated/poppet_drain.py
-    └─ run(scene): poppet.process_pending.run(scene)
+```
+MCP client ──stdio──▶ poppet-mcp ──HTTP 127.0.0.1:8765──▶ Cascadeur script server
+                                                             │ scene_idle
+                                                             ▼
+                                                    poppet_rt (in-app runtime)
+                                                             │  csc.* / scene.*
+                                                             ▼
+                                                     the running Cascadeur scene
 ```
 
-…and register `poppet_events` in `settings.json` `Python.Events`. Cascadeur's bundled `events_rule.py` walks the package tree once at startup via `pkgutil.walk_packages`, discovers our handler, and wires it to the event.
+- `poppet-mcp` is a FastMCP stdio server (Python 3.11+, `pip`/`uvx`); it talks
+  loopback HTTP to Cascadeur's script server (`GET /health`, `POST /run`)
+- The server evaluates one Python expression on the next `scene_idle` event on
+  Cascadeur's Qt main thread and returns its value's `repr`; Poppet submits one
+  expression that dispatches to / bootstraps `poppet_rt`
+- No user_scripts copy, no `settings.json` edits, no menu commands, no queue, no
+  window-focus requirement
 
-The result: any time the MCP server queues requests and the user clicks back into the Cascadeur window, the queue drains automatically. Most flows feel autonomous; the manual `Process Pending` menu is a fallback for cases where the user doesn't click back (e.g., MCP server invoked from a script with no window switch).
+## Why the built-in server
 
-We also register a `scene_opened` handler so freshly-loaded scenes drain on load.
+Cascadeur 2026.2 (August 2026) added a vendor script server (**Scripts → MCP → Start
+script server**) that removes the two problems that forced Poppet 0.x into a file-queue
+design: code now runs on the main thread inside a `scene_idle` event (the same safe
+context as bundled commands, with background-thread starvation no longer Poppet's
+problem), over a stable loopback HTTP transport instead of request files in
+`%LOCALAPPDATA%`, event hooks, a manual drain menu and a Windows focus nudge.
 
-## The Windows-API auto-nudge
+The trade-off: the server exposes exactly **one tool** (`run_script`) and returns
+raw Python results — no typed tools, workflow semantics, safety classification, or
+long-operation support, and a hard ~30 s cap. That gap is Poppet's reason to exist.
 
-`src/poppet_mcp/_nudge.py` tries to bring Cascadeur's window to the foreground via `SetForegroundWindow` after writing a request. The intent: trigger `scene_activated` without requiring the user to click.
+## The eval-expression trick
 
-It works inconsistently because of Windows focus-stealing prevention — `SetForegroundWindow` is silently denied when the MCP server process doesn't already have focus. We treat the nudge as best-effort: queue the request, try to nudge, and if it fails the user is the fallback.
+Cascadeur's server compiles submitted code with `mode="eval"` first, falling back to
+`mode="exec"` on `SyntaxError`. The paths return different things:
 
-## Why this design works for Cascadeur but not Blender
+| Path | Server response |
+|---|---|
+| `eval` | `{"ok": true, "value": "<repr of value>", "messages": [...]}` |
+| `exec` | `{"ok": true, "value": "", ...}` — statements return no data |
 
-Blender has `bpy.app.timers.register(callable, first_interval=0.1)` — a clean main-thread scheduler. Blender MCP uses it to host a real TCP listener inside Blender. We can't do that in Cascadeur 2025.3.3.
-
-If a future Cascadeur version ships PySide or exposes a main-thread scheduler, the socket design becomes viable and Poppet could switch to it for the per-request latency win. Until then, file-sync is the only working architecture.
-
-## Why dispatchers try multiple API call shapes
-
-Cascadeur's `csc.*` API drifts between versions — method names rename, signatures shift, modules move. Our dispatchers defend against this by trying a small set of candidate call shapes and reporting which one worked:
+Poppet needs data back, so every submission is **one expression**. Arbitrarily
+large programs are wrapped in a lambda that execs them in a private namespace and
+yields a result variable (`src/poppet_mcp/_expression.py`):
 
 ```python
-for label, attempt in (
-    ("dsm.save_scene(cur, path)", lambda: dsm.save_scene(cur, normalized)),
-    ("dsm.save_scene(path, cur)", lambda: dsm.save_scene(normalized, cur)),
-    ("dsm.save(cur, path)", lambda: dsm.save(cur, normalized)),
-    ("cur.save(path)", lambda: cur.save(normalized)),
-):
-    try:
-        attempt()
-        method = label
-        last_err = None
-        break
-    except Exception as e:
-        last_err = f"{label}: {type(e).__name__}: {e}"
+(lambda __ns__: (
+    exec(compile(<program>, "<poppet>", "exec"), __ns__),
+    __ns__.get("__poppet_result__"),
+)[1])({"csc": csc, "scene": scene, "app": app})
 ```
 
-This way:
+`csc`, `scene` and `app` come from the namespace the script server already injects,
+so the wrapped program has bundled-script privileges. The result must be a `str`;
+the runtime returns JSON text, and the MCP side decodes it in three steps:
+`ast.literal_eval(value)` → `json.loads(...)`.
 
-- If Cascadeur 2025.3.4 renames `save_scene` to `persist_scene`, our dispatcher fails gracefully and the `method` field in the response surfaces which signatures we tried.
-- If a method's argument order swaps, we typically hit the right variant in the second or third attempt.
-- The MCP tool surface stays stable — Claude calls `save_scene(path)` and gets back a structured response either way.
+## Request lifecycle
 
-## Files you'd touch to add a new tool
+1. An MCP client calls a tool, e.g. `get_scene_info()`.
+2. `poppet_mcp.server` calls `CascadeurConnection.request("scene_info", {})`.
+3. The connection builds the dispatch expression: if the loaded runtime's
+   `RUNTIME_VERSION` matches the client's expectation, the program calls
+   `poppet_rt.dispatch(...)`; otherwise it returns a one-key bootstrap marker
+   (`{"__poppet_bootstrap_required__": true}`) instead of failing.
+4. `POST /run` with the wrapped expression (`POPPET_TIMEOUT`, default 35 s).
+5. Cascadeur's server waits for `scene_idle` (its own ~30 s cap), runs the
+   expression on the Qt thread, and returns `{"ok": ..., "value": "<repr>", ...}`.
+6. The client decodes `value` → JSON payload → `{"status": "success", "result": ...}`
+   or `{"status": "error", "message", "traceback"}`; `CascadeurScriptError` is raised
+   for the error case, carrying the in-app traceback.
+7. If step 6 saw the bootstrap marker, the client re-submits once with the bootstrap
+   expression and dispatches in the same request.
 
-| File | Role |
-|---|---|
-| `cascadeur_side/poppet/_dispatchers.py` | Add `_d_your_tool(params, scene)` and register in `_HANDLERS` |
-| `src/poppet_mcp/server.py` | Add `@mcp.tool() def your_tool(...)` — Claude-facing surface |
-| `tests/test_new_dispatchers.py` | Validation tests for the dispatcher |
-| `tests/test_mcp_server.py` | Routing test that the MCP wrapper forwards correctly |
-| `README.md` | Add a row to the verified-tools table |
-| `CHANGELOG.md` | Under `## [unreleased]` (or the next planned version) |
+Handlers live on the Cascadeur side deliberately: mutations need
+`scene.modify_with_session(...)` / `modify_update_with_session(...)` for undo, and
+should run in the `scene_idle` context. Prompts only see typed tool arguments.
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full workflow including the Python 3.8 compat rules.
+## Runtime bootstrap and versioning
 
-## What's not in scope
+- The runtime is `src/poppet_mcp/runtime/inapp.py`; its source text (~70 KB) is
+  shipped verbatim and is never imported by the MCP server process.
+- Two identities come from that one file: `RUNTIME_VERSION` (human-readable, reported
+  by `get_script_server_status`) and `SOURCE_DIGEST`, the SHA-256 of the exact source
+  text.
+- `SOURCE_DIGEST` is the wire-contract identity: the client only trusts a loaded
+  `poppet_rt` whose stamped digest matches the source it would ship.
+- Bootstrap program: if `sys.modules["poppet_rt"]` is missing **or its stamped digest
+  differs**, create a fresh module, `exec` the shipped source into it, stamp the
+  digest, register it in `sys.modules`, then dispatch.
+- Consequences: a Cascadeur restart clears the in-memory module (the next call
+  re-bootstraps). A script reload leaves it alone — which is safe because the digest
+  check re-bootstraps on the first call after any Poppet upgrade. No manual cache
+  clearing and no version-bump discipline required. The first call after either event
+  is slower; later calls are compact JSON.
 
-- **Headless Cascadeur.** We don't run Cascadeur in batch mode — it needs a UI for the event-loop to tick. If Nekki ever ships a headless build, the file-sync design needs no changes; you just lose the auto-drain because there's no window focus event.
-- **Cross-machine MCP.** stdio transport assumes the MCP server and Cascadeur live on the same machine (file-sync needs shared `%LOCALAPPDATA%`). For a multi-machine setup you'd swap the file-sync layer for HTTP + a shared queue.
-- **Authentication.** The file-sync dir is per-user, so an attacker who can write to `%LOCALAPPDATA%\poppet-mcp\requests\` can already do anything in Cascadeur. We rely on OS-level filesystem perms.
+## Safety model
+
+- **Loopback only.** The script server binds `127.0.0.1`; Poppet never exposes it.
+  Anything that can reach port 8765 can run arbitrary Python in Cascadeur — that is
+  Cascadeur's trust model, and Poppet does not widen it. Don't port-forward it.
+- **No auth, no TLS.** Local-only by design; loopback traffic bypasses system proxies
+  (`urllib.request.ProxyHandler({})`) so proxy config cannot leak requests.
+- **Arbitrary code is explicit.** `execute_csc_code` and `run_script` execute
+  caller-supplied Python by definition. Everything else is a fixed handler with a
+  fixed parameter schema; the runtime dispatches only known command names and returns
+  a structured error otherwise.
+- **No persistent Cascadeur-side state.** Nothing is written to `user_scripts/` or
+  `settings.json`; the only in-app artefact is `poppet_rt` in Python memory, gone on
+  restart.
+- **Undo.** Mutations go through `scene.modify*`, so they appear as normal Cascadeur
+  undo steps; `undo()`/`redo()` wrap the menu actions.
+
+## Failure modes
+
+| Symptom | Layer | Cause |
+|---|---|---|
+| `CascadeurNotRunning` — "not reachable … Start script server" | transport | Cascadeur closed, server stopped, wrong port |
+| `CascadeurProtocolError` — "Something other than … answered" | transport | another app owns 8765; `/health` is not `{"ok": true, ...}` or 404s |
+| `CascadeurTimeout` — "accepted the request but did not answer within Ns" | transport + host | never reached `scene_idle`, or the handler outlived the deadline |
+| `CascadeurScriptError` + traceback | in-app | handler raised inside `poppet_rt`; the traceback is Cascadeur's |
+| `CascadeurProtocolError` — "empty 'value'" | protocol | server fell back to `exec`; a non-expression slipped past the wrapper |
+| `CascadeurProtocolError` — "bootstrap marker again" | protocol | runtime failed to load |
+
+Timeouts are not proof the mutation did not happen. Read state back before retrying;
+see [TROUBLESHOOTING.md](../TROUBLESHOOTING.md).
+
+### The ~30 s cap
+
+The script server's `_queue_script` waits at most 30 s for the next idle event and
+drops requests that miss it. A handler running longer trips Poppet's client timeout
+while it may still finish in-app. Keep calls short, split long work, use a small
+`run_autophysics(timeout_sec=...)` (5–10 s) and poll. Large exports may exceed the
+cap; verify the file before retrying.
+
+## Port conflict (8765 already in use)
+
+The tell is a `/health` reply that is not Cascadeur's `{"ok": true, "version": ...}`
+(often a 404 from another local tool). Find the owner with `netstat -ano | findstr
+:8765` (Windows) or `lsof -i :8765` (macOS/Linux). Fixes: stop the conflicting app
+and start the server again, or start Cascadeur's server on another port from
+**Window → Python Console**:
+
+```python
+import scripts.mcp.script_server.server as s
+import csc
+s.start(csc.app.get_application().current_scene().domain_scene(), "127.0.0.1", 8766)
+```
+
+Then set `POPPET_URL=http://127.0.0.1:8766` and restart the client. *[needs live
+verification]* — mirrors the shipped API, not covered by the test suite. Some
+developer tools occupy 8765 on the author's machine (the DSH channel-pack is one).
+
+## History: why the 0.x file queue existed
+
+Poppet 0.x targeted Cascadeur 2025.3.3, whose embedded Python had no PySide, no
+main-thread scheduler and starved background threads. An in-app TCP listener was
+impossible, so 0.x wrote request JSON files into `%LOCALAPPDATA%\poppet-mcp\` and
+relied on a `user_scripts/` package plus `scene_activated` hooks or a
+**Commands → Poppet → Process Pending** click to drain them — workable, but it needed
+a Cascadeur-side install, a manual drain fallback, a focus nudge, and paid a file-I/O
+round trip per call. Cascadeur 2026.2 removed all three constraints; the queue,
+install, menu commands and nudge are gone in 1.0. Legacy design:
+[v0.6.0 release](https://github.com/figgiee/poppet/releases/tag/v0.6.0).
+
+## Testing strategy
+
+- **Protocol tests run against Cascadeur's real server code, offline.**
+  `tests/native_server_harness.py` loads the shipped
+  `resources/scripts/python/scripts/mcp/script_server/server.py` from the local
+  Cascadeur install, substitutes fake `csc`/`events` modules (including a fake
+  `scene_idle_manager` driving the queue from a thread), and starts it on an
+  ephemeral port. Tests are skipped when Cascadeur is absent (e.g. CI).
+- `tests/test_native_protocol.py` covers `/health`, bootstrap-on-first-call, runtime
+  reuse, re-bootstrap after module loss, unknown commands, in-app tracebacks,
+  `run_script` raw pass-through, connection-refused messaging and port-conflict
+  detection.
+- Unit tests cover the expression wrapper, runtime loader/version parse, connection
+  error mapping and handler routing with a mocked `csc`.
+- Not covered offline: real `csc.*` behaviour (rig edits, solves, export) — that
+  needs a live session, which is what the README's `expected` / `known risk` markers
+  refer to.
+
+Out of scope: headless/batch Cascadeur (the server needs a GUI event loop), remote or
+multi-user MCP (stdio + loopback only), Cascadeur 2025.3.x (use 0.6), authentication
+(local same-user trust model).

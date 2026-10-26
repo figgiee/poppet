@@ -4,6 +4,62 @@ All notable changes to Poppet — Cascadeur MCP. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per
 [SemVer](https://semver.org/).
 
+## [1.0.0] — 2026-10-26
+
+Rebuilt on Cascadeur 2026.2's built-in MCP script server. The Cascadeur-side
+install is gone: no `user_scripts` copy, no `settings.json` Python overrides, no
+menu commands, no request files, no `Process Pending` clicks, no event hooks, and
+no window-focus requirement. `poppet-mcp` now ships its in-app runtime to
+Cascadeur as source text on the first tool call.
+
+### Changed — breaking
+
+- **Target is now Cascadeur 2026.2.3.** Cascadeur 2025.3.x support ends at
+  poppet 0.6.0 (see the `v0.6.0` tag). The old file-queue transport is removed.
+- **Transport:** stdio MCP → loopback HTTP → Cascadeur's built-in script server
+  (`Scripts → MCP → Start script server`, `127.0.0.1:8765`). The first call
+  bootstraps `poppet_rt` inside Cascadeur; the module is version-stamped and is
+  re-shipped automatically after a Cascadeur restart or a poppet upgrade.
+- **Uninstall from 0.6:** delete `user_scripts/poppet` and
+  `user_scripts/poppet_events` from Cascadeur's user data directory, and wire the
+  client config with `uvx poppet-mcp` (no Cascadeur-side step).
+- **New environment variables:** `POPPET_URL` (default
+  `http://127.0.0.1:8765`) and `POPPET_TIMEOUT` (default 35s).
+
+### Added
+
+- `get_script_server_status` — one-call diagnosis of the link between poppet and
+  Cascadeur (connectivity, script-server version, loaded runtime version,
+  embedded Python, whether a scene is open).
+- `run_script` — raw escape hatch that submits Python straight to Cascadeur's
+  script server and returns its native response (`ok`, `value`, `messages`,
+  `error`), including full in-app tracebacks on failure.
+- `scripts/live_check.py` — end-to-end verification against a running Cascadeur.
+- `tests/native_server_harness.py` — runs Cascadeur's **shipped** script server
+  offline with fake `csc`/`events` modules, so the wire protocol is tested
+  against the real server code in CI without a GUI.
+- `docs/research/` — competitive landscape and 2025.3.3 → 2026.2.3 Python API
+  compatibility audit.
+
+### Fixed
+
+- 2026.2.3 compatibility pass over every handler, driven by the shipped `.pyi`
+  stubs (see `docs/research/python-api-diff.md`): handler fixes for layer
+  visibility/locking, object hierarchy, object delete/duplicate, scene save,
+  viewport screenshot (`take_image` arity), and set-typed API arguments.
+- Every mutating handler now routes through a checked `scene.modify*` wrapper and
+  raises when Cascadeur returns `False` (callback failed, traceback only in
+  Cascadeur's event log) instead of reporting false success.
+- `set_controller_position` / `set_controller_rotation` — the MCP layer forwards a
+  nested `{"transform": {...}}` envelope that the migrated handler did not read;
+  both keyframing tools now accept it (and the legacy flat keys).
+- `get_active_layer` / `set_active_layer` redefined on the timeline layer
+  selection (`Scene.get_layers_selector` / `Session.take_layers_selector`).
+  2026.2 has no separate "active layer" API; responses carry
+  `"semantics": "timeline-layer-selection"`.
+- `csc://schema` now reflects the live 2026.2.3 API surfaced from the running
+  Cascadeur instance rather than a cached 2025.3.x dump.
+
 ## [0.6.0] — 2026-05-25
 
 ### Fixed

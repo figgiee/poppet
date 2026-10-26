@@ -1,109 +1,125 @@
-# Poppet — Usage Cookbook
+# Poppet — Usage cookbook (1.0)
 
-Common workflows for driving Cascadeur 2025.3.x from Claude (or any MCP client) via Poppet. See [README.md](README.md) for the full tool table and architecture.
+Workflows for driving Cascadeur 2026.2.3+ from Claude (or any MCP client) through
+Poppet. Tool list: [README.md](README.md). Design: [docs/architecture.md](docs/architecture.md).
 
-The pattern under every recipe: Claude calls a tool, Poppet writes a request file, Cascadeur drains the queue, Poppet returns the result. Three drain paths, in order of preference:
+## Before you start
 
-1. **Auto-drain on focus (v0.2+).** If `poppet_events` is installed (it is, by default — see [README.md install section](README.md#install)), Cascadeur fires `scene_activated` whenever the window regains focus, which calls `process_pending.run(scene)` for you. Most workflows feel autonomous.
-2. **One-click drain dialog.** `Commands → Poppet → Status / Drain Dialog` shows pending count + a Drain Now button.
-3. **Manual drain.** `Commands → Poppet → Process Pending`. Always works.
+Cascadeur 2026.2.3+ with a scene open; **Scripts → MCP → Start script server** started
+(Event Log: `[Cascadeur MCP] listening at http://127.0.0.1:8765/mcp`); Poppet registered
+in your client ([configs](docs/mcp_client_configs.md)). No Cascadeur-side install, no
+drain step. The first call bootstraps Poppet's ~70 KB in-app runtime (slower); after
+that each call is one loopback round trip. Signatures match `src/poppet_mcp/server.py`.
 
 ## First contact
 
-Five steps from zero to a working `get_scene_info` call.
+```text
+get_script_server_status()   # connected? url, server_version, runtime_version, has_scene
+get_scene_info()             # scene name, frame, counts — is a scene open?
+list_objects(name_contains="Box")   # the animatable controllers
+list_layers()                       # layers + key counts
+```
 
-1. Install the Cascadeur side: `.\scripts\install.ps1` from the repo root. Copies `cascadeur_side/poppet/` into `%LOCALAPPDATA%\Nekki Limited\Cascadeur\user_scripts\poppet\` and additively extends `settings.json` (`Python.Path` + `Python.Commands`). Backs up `settings.json` to `settings.json.bak` first.
-2. Install the MCP server side: `pip install -e .` (or `uvx poppet-mcp` once published).
-3. Restart Cascadeur. Open any scene (the bundled `Cascy.casc` sample is the easiest target). Verify **Commands → Poppet → Process Pending** appears in the menu.
-4. Wire the server into your MCP client. Claude Code: `claude mcp add poppet -- uvx poppet-mcp`. Claude Desktop: add a `poppet` entry to `claude_desktop_config.json` (snippet in the README).
-5. Ask Claude "what's in my Cascadeur scene?". Claude calls `get_scene_info`, Poppet queues the request, you click **Process Pending** once, you get back `{frame, object_count, layer_count, selection_count, scene_name}`. On Cascy that's `object_count: 289, layer_count: 13`.
+If the status call fails, fix the connection first
+([TROUBLESHOOTING.md](TROUBLESHOOTING.md)); it is the cheapest call in the toolkit.
 
-If step 5 hangs, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — most cases are "did the focus-drain not fire?" (click the Cascadeur window once) or "did you actually click Process Pending?" if the events handler isn't installed.
-
-## Cookbook
-
-Each recipe is a self-contained sequence of MCP tool calls. The tool names and signatures match `src/poppet_mcp/server.py`. Wherever you see one of these in a code block, picture Claude issuing it to the MCP server and you (or auto-nudge) draining once per call — or batching them in one drain if you queue several first.
-
-### Set sparse keys + AutoPose + AutoPhysics + export FBX
-
-The headline workflow — spec §4. Claude lays down a handful of milestone positions on hip/foot controllers, asks Cascadeur to fill in plausible joint angles via AutoPosing, applies gravity and momentum via AutoPhysics, reads back what the solver produced, and writes an FBX. The bundled `Cascy.casc` character is the canonical target.
+## Inspect the scene
 
 ```text
-get_scene_info()
-list_objects(name_contains="Box")
+list_objects()                                      # id, name, type
+get_object_hierarchy()                              # {id, name, parent_id, child_ids}
+get_object_transform(object_name="pelvis_Box", frame=0)
+list_object_attributes(object_name="pelvis_Box")    # settable attributes
+```
 
+On the bundled `Cascy.casc` sample, `get_scene_info` reports roughly
+`object_count: 289`, `layer_count: 13` — a quick "real scene loaded" check.
+
+## Headline loop: pose → AutoPose → AutoPhysics → read back
+
+```text
 set_controller_position(controller_id="pelvis_Box", frame=0, x=0, y=0, z=30)
-set_selection(object_names=["foot_Box_l", "foot_Box_r"])
+set_controller_position(controller_id="foot_Box_l", frame=0, x=-8, y=0, z=0)
+set_controller_position(controller_id="foot_Box_r", frame=0, x=8, y=0, z=0)
 
-run_autoposing()
-run_autophysics(timeout_sec=5)
+run_autoposing()                 # resolve joint rotations from the anchors
+run_autophysics(timeout_sec=5)   # gravity/collisions; polls for convergence
 
-read_telemetry(
-    controller_ids=["pelvis_Box", "foot_Box_l", "foot_Box_r"],
-    frames=[0],
-)
+read_telemetry(controller_ids=["pelvis_Box", "foot_Box_l", "foot_Box_r"], frames=[0])
+```
+
+- `run_autophysics` returns `{"converged": true}` or
+  `{"converged": false, "status": "timeout"}`. Keep `timeout_sec` well under the
+  script server's ~30 s cap (5–10 s is a good solve budget; ~25 s hard ceiling).
+- A timed-out solve may still have applied changes — read telemetry before re-running.
+- `read_telemetry` returns position + Euler rotation per controller/frame;
+  `read_telemetry_range` handles a frame range in one update-graph walk.
+
+Batch poses before solving — multiple `set_controller_position` calls then one
+`run_autoposing()` resolves the whole pose.
+
+## Keyframe authoring
+
+```text
+set_controller_position(controller_id="hand_Box_r", frame=12, x=20, y=10, z=20)
+set_controller_rotation(controller_id="hand_Box_r", frame=12, qx=0, qy=0, qz=0, qw=1)
+set_controller_scale(controller_id="chest_Box", frame=12, sx=1, sy=1.1, sz=1)
+
+add_keyframe(layer_id="<layer id>", frame=12)
+remove_keyframe(layer_id="<layer id>", frame=12)
+
+add_layer(name="Poppet_Bake")        # response includes the new layer id
+bake_range(layer_id="<new id>", frame_start=0, frame_end=60)
+undo()
+redo()
+```
+
+Selection helpers make batch edits practical:
+
+```text
+selection_filter(pattern="_Box", mode="suffix")        # every controller
+selection_filter(pattern="foot_Box_", mode="prefix")   # both feet
+selection_extend(object_names=["hand_Box_l"])
+selection_subtract(object_names=["hand_Box_r"])
+```
+
+Caveats: `list_layers` visibility/lock fields and `set_layer_visible` /
+`set_layer_locked` are flagged by the static API audit — verify the effect rather
+than trusting `status: success`. `get_active_layer` / `set_active_layer` are
+experimental (Cascadeur keys go to each object's own layer).
+
+## Save, load, capture
+
+```text
+save_scene(path="C:/work/snapshots/before.casc")
+screenshot_viewport(path="C:/work/snapshots/before.png")
+load_scene(path="C:/work/snapshots/before.casc")
+new_scene()
+```
+
+`screenshot_viewport()` without a path generates a timestamped file. Use absolute
+paths with forward slashes; the parent directory must exist. Check `exists` in the
+response — capture depends on the Cascadeur build.
+
+## FBX and scene IO
+
+```text
 export_fbx(path="C:/work/out/poppet_demo.fbx")
+import_fbx(path="C:/work/in/model.fbx", target="scene")
+import_fbx(path="C:/work/in/anim.fbx", target="animation")
 ```
 
-This is the exact sequence `scripts/demo_batch_spec4.py` runs end-to-end. On Cascy, the FBX comes out around 2.9 MB binary.
+Export is dialog-free binary FBX (baked animation, Y-up); `Cascy` yields ~2.9 MB.
+Large scenes can exceed the per-call cap — if a call times out, check the file before
+retrying. Import semantics are less exercised than export; verify visually.
 
-### Inspect the scene
+## Escape hatches
 
-The three orientation calls. Use these as the first thing in any session — they cost almost nothing and give Claude enough grounding to plan the rest. `get_scene_info` is one round trip; `list_objects` returns every object's UUID/name/type and accepts a substring filter; `list_layers` returns the 13 animation layers (on Cascy) with key counts.
+### `execute_csc_code` — typed runtime, arbitrary Python
 
-```text
-get_scene_info()
-list_objects()
-list_objects(name_contains="Box")    # just the animatable controllers
-list_layers()
-```
-
-### Read controller telemetry across a frame range
-
-`read_telemetry` accepts a list of controller IDs and a list of frame indexes and returns positions + Euler rotations for each combination. Cheap way to verify what AutoPosing/AutoPhysics actually produced, or to extract a baked animation for analysis.
-
-```text
-read_telemetry(
-    controller_ids=["pelvis_Box", "foot_Box_l", "foot_Box_r", "hand_Box_l", "hand_Box_r"],
-    frames=[0, 5, 10, 15, 20, 25, 30],
-)
-```
-
-Returns a nested dict keyed by controller name → frame → `{position: [x,y,z], rotation_euler: [rx,ry,rz]}`.
-
-### Move multiple controllers in one batch
-
-Each `set_controller_position` is one queued request — but they all drain in a single Process Pending click as long as you don't await between them. Run AutoPosing once at the end to let the solver smooth out the result.
-
-```text
-set_controller_position(controller_id="pelvis_Box",  frame=10, x=0, y=0, z=35)
-set_controller_position(controller_id="foot_Box_l",  frame=10, x=-8, y=0, z=0)
-set_controller_position(controller_id="foot_Box_r",  frame=10, x=8,  y=0, z=0)
-set_controller_position(controller_id="hand_Box_l",  frame=10, x=-20, y=10, z=20)
-set_controller_position(controller_id="hand_Box_r",  frame=10, x=20,  y=10, z=20)
-
-run_autoposing()
-```
-
-One drain → all five positions land and the pose resolves. The dispatcher logs one `ok` line per request in `dispatcher.log` so you can audit what landed.
-
-### Invoke an arbitrary Cascadeur action
-
-`call_action` is the universal escape hatch for menus and toolbar commands — any action ID listed at https://cascadeur.com/help/category/301 works. Fire-and-forget: no return value, no completion signal. For solves like AutoPhysics that need to converge, prefer the wrapped `run_autophysics()` which polls scene state.
-
-```text
-call_action(action_id="Scene.Undo")
-call_action(action_id="File.Save")
-call_action(action_id="AutoPosingTool.AutoPosing")
-call_action(action_id="Timeline.Play")
-call_action(action_id="Viewport.FOV increase")
-```
-
-If you discover an action ID that's worth wrapping (consistent return shape, slow enough to need polling), file an issue — Poppet's high-level tools are all just wrappers over `call_action` plus result extraction.
-
-### Use the escape hatch
-
-`execute_csc_code` runs arbitrary Python inside Cascadeur's embedded interpreter, with `csc` and `scene` already in scope. Returns the repr of the last expression (or `{"repr": "None"}` for pure statements). Wrap mutations in `scene.modify_with_session(lambda s: ...)` so undo keeps working.
+Runs through Poppet's in-app runtime with `csc`, `scene`, `app` in scope. Returns the
+expression value (or `None` for statements). Wrap mutations in
+`scene.modify_with_session(...)` to keep undo working.
 
 ```text
 execute_csc_code(code="scene.model_viewer().get_objects_count()")
@@ -113,105 +129,72 @@ viewer = scene.model_viewer()
 ids = viewer.get_objects()
 [(viewer.get_object_name(i), str(viewer.get_object_type(i))) for i in ids[:10]]
 """)
-
-execute_csc_code(code="""
-import csc
-def mutate(s):
-    sel = s.take_selector()
-    sel.select(['pelvis_Box'])
-scene.modify_with_session(mutate)
-""")
 ```
 
-Reach for this only when no higher-level tool fits. Anything you find yourself doing twice is a candidate for promotion to a real tool.
-
-### Read the live csc schema
-
-The `csc://schema` resource exposes a JSON dump of the actual `csc.*` API on your installed Cascadeur version — every module, class, method signature. Generated by **Commands → Poppet → Refresh Schema** and cached at `%LOCALAPPDATA%\poppet-mcp\csc_schema.json`. Around 134 KB on 2025.3.3. Use it as ground truth when the help-site docs lag a release.
+### `call_action` — menu/toolbar commands
 
 ```text
-# In your MCP client, request the resource:
-csc://schema
-
-# In execute_csc_code, dump a single method's signature live:
-execute_csc_code(code="import inspect, csc.view; inspect.signature(csc.view.Scene.set_current_frame)")
+call_action(action_id="Scene.Undo")
+call_action(action_id="AutoPosingTool.AutoPosing")
+call_action(action_id="Timeline.Play")
 ```
 
-Refresh after every Cascadeur update — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) "Schema is stale".
+Action IDs: <https://cascadeur.com/help/category/301>. Fire-and-forget: no return
+value, no completion signal. For AutoPhysics, prefer `run_autophysics()`.
 
-### Work with layers (add, bake, undo)
+### `run_script` — raw script server pass-through
 
-Layers are how Cascadeur stacks animation. v0.2 added direct create/delete, plus undo/redo and bulk range-bake.
+Sends Python straight to Cascadeur's built-in script server (no `poppet_rt`) and
+returns its raw reply: `{"ok": true, "value": "2", "messages": []}`.
 
 ```text
-list_layers()
-add_layer(name="Poppet_Bake")
-# response includes new layer_id
-
-set_active_layer(layer_id="<id from add_layer>")
-# now subsequent set_controller_position calls land on Poppet_Bake
-
-# Procedural authoring you want to commit to discrete keys:
-bake_range(layer_id="<id>", frame_start=0, frame_end=120)
-# Drops a per-frame key on every controller across the range.
-
-# Roll back if you didn't like it:
-undo()
-
-# Or wipe the layer entirely:
-delete_layer(layer_id="<id>")
+run_script(code="1 + 1")
+run_script(code="print('hello from Cascadeur')")
 ```
 
-The undo + redo wrappers go through `Scene.Undo` / `Scene.Redo` so they participate in Cascadeur's normal undo stack — any manual edits the user made in the GUI get rolled back too.
+Use for debugging the transport, one-off statements, or comparing raw output with a
+typed tool. `value` is the repr of the expression; in-app failures return
+`{"ok": false, "error": "<traceback>"}` without raising. Same `scene_idle` path and
+~30 s cap.
 
-### Filter the selection by pattern
+## Long operations and the 30 s cap
+
+Cascadeur's script server waits ~30 s for `scene_idle` and drops requests that miss
+it; handlers that run longer trip Poppet's timeout even though they may still finish
+in-app. So: **chunk** long work (bake 50 frames at a time; read telemetry in ranges),
+**start/poll** rather than block, **checkpoint** with `save_scene`, and treat
+**timeouts as unknown outcomes** — read state back before retrying. Keep
+`POPPET_TIMEOUT` above ~30 s (default 35); raising it does not extend the server cap.
+
+## Diagnostics
 
 ```text
-# Select every controller (suffix match)
-selection_filter(pattern="_Box", mode="suffix")
-
-# Select both feet
-selection_filter(pattern="foot_Box_", mode="prefix")
-
-# Select via regex
-selection_filter(pattern=r"(hand|foot)_Box_[lr]", mode="regex")
+get_script_server_status()
+# {connected, url, server_version, runtime_version, python, has_scene, ...}
+# when down: {connected: false, error: "<actionable reason>"}
 ```
 
-Returns count + first 50 matched names. Useful before AutoPosing if you want a specific subset of controllers as anchors.
+Terminal probe, no MCP client needed:
 
-### Save / load a scene + screenshot the viewport
-
-```text
-# Snapshot before a destructive experiment:
-save_scene(path="C:/work/snapshots/before.casc")
-
-# (… your experiment …)
-
-# Visual diff: take a screenshot before re-opening
-screenshot_viewport(path="C:/work/snapshots/after.png")
-
-# Roll back:
-load_scene(path="C:/work/snapshots/before.casc")
+```bash
+python -m poppet_mcp.cascadeur_connection
+# {"ok": true, "health": {...}, "ping": {...}}
 ```
 
-`save_scene` and `load_scene` try multiple DataSourceManager call shapes (Cascadeur API drifts between versions) and report which one worked in the `method` field.
+`ping` goes through the in-app runtime, so success proves the whole chain:
+poppet-mcp → script server → `poppet_rt` → `csc`.
 
-## Common controllers in the bundled Cascy character
+## Cascy controller cheatsheet
 
-Cascy uses the standard Cascadeur biped naming. **Controllers** are the `_Box`-suffixed objects — those are what you animate. The bare names (no `_Box`) are the underlying skeleton joints; setting positions on those still works but doesn't drive AutoPosing the way controllers do.
+Controllers are the `_Box` objects — animate those; bare names (`pelvis`, `thigh_l`,
+…) are skeleton joints. Main ones: `pelvis_Box` (root translation), `chest_Box`,
+`head_Box`, `hand_Box_l/r`, `foot_Box_l/r` (IK targets driven by AutoPosing),
+`knee_Box_l/r`, `elbow_Box_l/r` (pole vectors). Confirm with
+`list_objects(name_contains="Box")`.
 
-| Controller | Controls |
-|---|---|
-| `pelvis_Box` | Pelvis / root translation. Move this to translate the whole character. |
-| `chest_Box` | Upper torso / ribcage. Affects spine bend. |
-| `head_Box` | Head orientation and look-at. |
-| `hand_Box_l` | Left hand IK target — wrist position + rotation. |
-| `hand_Box_r` | Right hand IK target. |
-| `foot_Box_l` | Left foot IK target — drives the whole leg via AutoPosing. |
-| `foot_Box_r` | Right foot IK target. |
-| `knee_Box_l` | Left knee pole vector — bias knee orientation when foot is anchored. |
-| `knee_Box_r` | Right knee pole vector. |
-| `elbow_Box_l` | Left elbow pole vector. |
-| `elbow_Box_r` | Right elbow pole vector. |
+## Quick pitfalls
 
-This is the standard Cascadeur biped scheme — names are stable across the bundled samples and any character built with the default rig. To confirm what exists in your scene, run `list_objects(name_contains="Box")` and read the response.
+Set `pelvis_Box`, not `pelvis`; rotation is a quaternion `(qx,qy,qz,qw)` while
+telemetry returns Euler angles; `call_action` never blocks, so poll if you need
+completion; most tools need an open scene. Port 8765 busy → see
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md#port-8765-is-already-in-use).

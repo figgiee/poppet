@@ -15,7 +15,8 @@ import os
 from unittest.mock import MagicMock
 
 import pytest
-from poppet import _dispatchers
+
+from .runtime_loader import runtime as _dispatchers
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -65,30 +66,30 @@ def test_save_scene_requires_string_path(fake_scene):
         _dispatchers._d_save_scene({"path": ""}, fake_scene)
 
 
-def test_save_scene_normalizes_backslashes(csc_mock, fake_scene, tmp_path):
-    target = str(tmp_path / "out.casc")
-    # Make every DataSourceManager.save_scene attempt succeed.
+def test_save_scene_normalizes_backslashes(csc_mock, fake_scene, monkeypatch):
+    target = r"C:\fake\out.casc"
     app = csc_mock.app.get_application.return_value
     dsm = app.get_data_source_manager.return_value
     dsm.save_scene.return_value = None
-    # Touch the file so the exists() check is true.
-    open(target, "w").close()
+    # No real file I/O: the sandbox cannot provision writable test temp dirs.
+    monkeypatch.setattr(_dispatchers.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(_dispatchers.os.path, "getsize", lambda p: 1234)
+    monkeypatch.setattr(_dispatchers.os, "makedirs", lambda *a, **k: None)
     out = _dispatchers._d_save_scene({"path": target}, fake_scene)
     assert out["path"] == target.replace("\\", "/")
     assert out["saved"] is True
     assert "method" in out
 
 
-def test_load_scene_rejects_missing_file(fake_scene, tmp_path):
-    bogus = str(tmp_path / "does_not_exist.casc")
+def test_load_scene_rejects_missing_file(fake_scene, monkeypatch):
+    monkeypatch.setattr(_dispatchers.os.path, "exists", lambda p: False)
     with pytest.raises(ValueError, match="not found"):
-        _dispatchers._d_load_scene({"path": bogus}, fake_scene)
+        _dispatchers._d_load_scene({"path": r"C:\fake\does_not_exist.casc"}, fake_scene)
 
 
-def test_load_scene_calls_dsm(csc_mock, fake_scene, tmp_path):
-    real = tmp_path / "real.casc"
-    real.write_text("fake")
-    out = _dispatchers._d_load_scene({"path": str(real)}, fake_scene)
+def test_load_scene_calls_dsm(csc_mock, fake_scene, monkeypatch):
+    monkeypatch.setattr(_dispatchers.os.path, "exists", lambda p: True)
+    out = _dispatchers._d_load_scene({"path": r"C:\fake\real.casc"}, fake_scene)
     assert out["loaded"] is True
     assert "method" in out
 
@@ -177,13 +178,22 @@ def test_object_delete_404s_on_unknown(fake_scene):
         _dispatchers._d_object_delete({"object_name": "nope"}, scene)
 
 
-def test_object_delete_returns_result_for_known(fake_scene):
+def test_object_delete_uses_verified_model_editor(fake_scene):
     scene = _scene_with_objects(("oid-1", "head_Box", "Box"))
-    _run_mod_immediately(scene, "modify_with_session")
+    model = MagicMock(name="model")
+    updater = MagicMock(name="scene_updater")
+
+    def _call(label, mod):
+        # csc.model.ModelEditor.delete_objects(set[ObjectId]) + SceneUpdater calls
+        mod(model, MagicMock(), updater)
+
+    scene.modify_update.side_effect = _call
     out = _dispatchers._d_object_delete({"object_name": "head_Box"}, scene)
-    # Either deleted via model_editor or fell back through action ids — both
-    # acceptable for the mock, as long as we get a structured response.
-    assert "obj_id" in out
+    assert out["obj_id"] == "oid-1"
+    assert out["method"] == "ModelEditor.delete_objects"
+    model.delete_objects.assert_called_once_with({"oid-1"})
+    updater.generate_update.assert_called_once()
+    updater.run_update.assert_called_once()
 
 
 def test_object_duplicate_requires_name(fake_scene):
@@ -202,21 +212,41 @@ def test_object_duplicate_404s_on_unknown(fake_scene):
 # ---------------------------------------------------------------------------
 
 
-def test_screenshot_auto_generates_path(csc_mock, fake_scene):
-    # When path is omitted, dispatcher auto-generates a temp path
+def test_screenshot_auto_generates_path(csc_mock, fake_scene, monkeypatch):
+    # When path is omitted, dispatcher auto-generates a temp path.
+    monkeypatch.setattr(_dispatchers.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(_dispatchers.os.path, "getsize", lambda p: 2048)
+    monkeypatch.setattr(_dispatchers.os, "makedirs", lambda *a, **k: None)
     out = _dispatchers._d_viewport_screenshot({}, fake_scene)
-    assert "path" in out
+    assert out["path"].endswith(".png")
     assert "poppet_screenshot_" in out["path"]
+    assert out["method"] == "RenderToFile.take_image"
+    # csc.tools.RenderToFile.take_image(scene_view, RenderParameters, file_name)
+    app = csc_mock.app.get_application.return_value
+    tool = app.get_tools_manager.return_value.get_tool.return_value
+    args, _kwargs = tool.take_image.call_args
+    assert len(args) == 3
+    assert args[2] == out["path"]
 
 
-def test_screenshot_returns_method_used(csc_mock, fake_scene, tmp_path):
-    target = str(tmp_path / "shot.png")
-    # The conftest mock auto-coerces any attribute access — so RenderToFile
-    # take_image silently "succeeds" but the file is never written.
+def test_screenshot_returns_method_used(csc_mock, fake_scene, monkeypatch):
+    target = r"C:\fake\shot.png"
+    monkeypatch.setattr(_dispatchers.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(_dispatchers.os.path, "getsize", lambda p: 123)
+    monkeypatch.setattr(_dispatchers.os, "makedirs", lambda *a, **k: None)
     out = _dispatchers._d_viewport_screenshot({"path": target}, fake_scene)
     assert out["path"] == target.replace("\\", "/")
-    # Either RenderToFile or a fallback action was attempted.
-    assert "method" in out or "error" in out
+    assert out["method"] == "RenderToFile.take_image"
+    assert out["exists"] is True
+
+
+def test_screenshot_raises_when_no_file_written(csc_mock, fake_scene, monkeypatch):
+    # Never a false success: take_image returning is not proof a file exists.
+    target = r"C:\fake\shot.png"
+    monkeypatch.setattr(_dispatchers.os.path, "exists", lambda p: False)
+    monkeypatch.setattr(_dispatchers.os, "makedirs", lambda *a, **k: None)
+    with pytest.raises(RuntimeError, match="no image was written"):
+        _dispatchers._d_viewport_screenshot({"path": target}, fake_scene)
 
 
 # ---------------------------------------------------------------------------

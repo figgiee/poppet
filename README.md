@@ -3,204 +3,187 @@
 [![CI](https://github.com/figgiee/poppet/actions/workflows/ci.yml/badge.svg)](https://github.com/figgiee/poppet/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Cascadeur 2025.3.3](https://img.shields.io/badge/Cascadeur-2025.3.3-orange.svg)](https://cascadeur.com/)
+[![Cascadeur 2026.2.3](https://img.shields.io/badge/Cascadeur-2026.2.3-orange.svg)](https://cascadeur.com/)
+[![Version 1.0.0](https://img.shields.io/badge/version-1.0.0-green.svg)](CHANGELOG.md)
 
-Model Context Protocol server for [Cascadeur](https://cascadeur.com/) 2025.3.3. Lets Claude (and any MCP client) drive a real character animation pipeline: read scene state, set sparse keyframes, trigger AutoPosing + AutoPhysics, read back telemetry, save/load scenes, screenshot the viewport, manage layers + object hierarchy, export FBX.
+Model Context Protocol server for [Cascadeur](https://cascadeur.com/) **2026.2.3+**.
+Poppet gives Claude (or any MCP client) **45 typed tools** for character animation —
+scene/rig inspection, sparse keyframes, AutoPosing, AutoPhysics, telemetry, layers,
+scene I/O, FBX, viewport capture, escape hatches — and drives Cascadeur through the
+**built-in MCP script server that ships with Cascadeur 2026.2**.
 
-End-to-end demo verified: Claude proposes 8 spec §4 operations → user clicks **Commands → Poppet → Process Pending** in Cascadeur once → all 8 land, dispatcher returns 8 success responses in <3 seconds, FBX file appears on disk.
+There is **nothing to install inside Cascadeur**: no `user_scripts` copy, no
+`settings.json` edits, no menu commands, no queue draining, no window-focus dance.
+Start Cascadeur's script server, register Poppet in your MCP client, done. Requires
+Cascadeur 2026.2.3+, Python 3.11+ (`uvx` is enough) and an MCP client.
 
-**v0.2 — auto-drain via events.** Installing the `poppet_events` package wires `scene_activated` and `scene_opened` event hooks. Cascadeur drains the request queue automatically every time its window regains focus — no manual click required for most workflows.
+> **Cascadeur 2025.3.x is not supported in 1.0.** The file-queue 0.6 line is preserved
+> at the [v0.6.0 release](https://github.com/figgiee/poppet/releases/tag/v0.6.0).
+
+## Quickstart (two steps)
+
+1. **In Cascadeur:** open a scene, then **Scripts → MCP → Start script server**. The
+   Event Log prints `[Cascadeur MCP] listening at http://127.0.0.1:8765/mcp`.
+   The server stops when Cascadeur exits; on a script reload Cascadeur restarts it
+   automatically.
+
+2. **In your MCP client:** register Poppet.
+
+   ```bash
+   claude mcp add poppet -- uvx poppet-mcp       # Claude Code
+   ```
+
+   ```json
+   // Claude Desktop — claude_desktop_config.json
+   { "mcpServers": { "poppet": { "command": "uvx", "args": ["poppet-mcp"] } } }
+   ```
+
+   Cursor / Windsurf / VS Code: [docs/mcp_client_configs.md](docs/mcp_client_configs.md).
+
+Ask "what's in my Cascadeur scene?". The **first tool call bootstraps Poppet's
+~70 KB in-app runtime** into Cascadeur (slower); later calls are small JSON round
+trips. Failures: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ## Architecture
 
 ```
-Claude ──MCP stdio──▶ poppet-mcp (host process, uvx-installable)
-                       │ FastMCP — 43 tools + 1 resource
-                       ▼
-              %LOCALAPPDATA%\poppet-mcp\requests\<uuid>.json
-                       ▼
-        [scene_activated event fires on window focus, OR
-         user clicks Commands → Poppet → Process Pending,
-         OR Cascadeur is in a Poppet → Status / Drain dialog]
-                       │ Cascadeur reads request, dispatches via csc.*,
-                       │ writes response file
-                       ▼
-              %LOCALAPPDATA%\poppet-mcp\responses\<uuid>.json
-                       ▲
-                       │ polled by MCP server
-              Returned to Claude as the tool result
+MCP client ──stdio──▶ poppet-mcp ──HTTP 127.0.0.1:8765──▶ Cascadeur script server
+                                                             │ scene_idle
+                                                             ▼
+                                                    poppet_rt (in-app runtime)
+                                                             │  csc.* / scene.*
+                                                             ▼
+                                                    the running Cascadeur scene
 ```
 
-**Why file-sync instead of sockets?** Cascadeur 2025.3.3's embedded Python can't host a long-running listener:
-- PySide is not bundled — no `QTimer`
-- `csc.*` exposes no main-thread scheduler / event-post / dispatch API (verified — 115 candidate methods searched, none match)
-- Background `threading.Thread` only runs its first GIL slice and is then starved indefinitely (verified with minimal `time.sleep() + print()` loop)
+Cascadeur's script server exposes one primitive: run Python on the next
+`scene_idle`, on the Qt main thread — a safe point for scene mutations. On the first
+call Poppet embeds `src/poppet_mcp/runtime/inapp.py` in a single expression, executes
+it inside Cascadeur as private module `poppet_rt`, then sends compact
+`{"command", "params"}` JSON through it. Plain HTTP/JSON, no SSE, no install, no
+background processes inside Cascadeur. Details: [docs/architecture.md](docs/architecture.md).
 
-The file-sync pattern routes around all three limitations by piggybacking on Cascadeur's normal command-invocation path (which runs on the Qt main thread with full csc.* access). See [docs/architecture.md](docs/architecture.md) for the longer write-up.
-
-## Install
-
-```powershell
-# 1. Cascadeur-side: copies poppet/ into Cascadeur's user_scripts dir +
-#    additive Python.Path/Python.Commands override (no ScriptsDir replacement —
-#    that FATAL-crashes Cascadeur because it loses the rig "parts" subdir).
-.\scripts\install.ps1
-
-# 2. MCP server-side: install in your Python env (3.11+).
-pip install -e .                       # editable
-# or once published:
-uvx poppet-mcp                         # zero-install
-```
-
-Restart Cascadeur and verify **Commands → Poppet → Process Pending** appears.
-
-Wire into your MCP client. `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "poppet": { "command": "uvx", "args": ["poppet-mcp"] }
-  }
-}
-```
-
-Or Claude Code: `claude mcp add poppet -- uvx poppet-mcp`.
-
-See [docs/mcp_client_configs.md](docs/mcp_client_configs.md) for env-var configuration, local dev install snippets, and Cursor/Windsurf setup.
-
-After install, verify everything wired up correctly:
-
-```powershell
-python scripts/install_check.py
-```
-
-Walks through the Cascadeur-side install, `settings.json` keys (Python.Path, Python.Commands, Python.Events), the MCP server's importability, and the queue dirs — exits non-zero if anything's broken.
-
-## Tools (verified status)
-
-| Tool | Status | Notes |
+| Env var | Default | Meaning |
 |---|---|---|
-| `get_scene_info` | [VERIFIED] | Returns frame, object_count (289 on Cascy), layer_count, selection_count, scene_name |
-| `list_objects(name_contains)` | [VERIFIED] | Returns id (UUID), name, type for all objects. Honors name filter. |
-| `get_selection` / `set_selection(names)` / `clear_selection` | [VERIFIED] | Uses `scene.modify_with_session(session.take_selector().select(...))` |
-| `execute_csc_code(code)` | [VERIFIED] | Escape hatch — runs arbitrary Python in Cascadeur with `csc` + `scene` in scope |
-| `call_action(action_id)` | [VERIFIED] | Invokes any Cascadeur menu/toolbar action ID. See https://cascadeur.com/help/category/301 |
-| `list_layers` | [VERIFIED] | Returns 13 layers with id + key_frame_count for Cascy |
-| `get_keyframes(layer_id, frame_start, frame_end)` | [VERIFIED] | Layer-id matched via stringified UUID |
-| `set_controller_position(name, frame, x, y, z)` | [VERIFIED] | Works on both Joint (pelvis) and Box (pelvis_Box) controllers |
-| `set_controller_rotation(name, frame, qx, qy, qz, qw)` | [VERIFIED] | Quat -> XYZ Euler -> `Rotation.from_euler` (csc.math.Quaternion has no public ctor) |
-| `add_keyframe(layer_id, frame)` / `remove_keyframe(layer_id, frame)` | [WIRED v0.4] | `session.layers_editor().set_fixed_interpolation_or_key_if_need` / `unset_section`, patterns from `keyframe_reduction.py` + `reverse_animation.py` |
-| `set_controller_scale(controller_id, frame, sx, sy, sz)` | [WIRED v0.4] | Mirrors set_controller_position; writes to Local Scale / Scale node |
-| `selection_extend(names)` / `selection_subtract(names)` | [WIRED v0.5] | Set-union / set-difference on current selection — incremental refinement |
-| `read_telemetry_range(controllers, start, end, step, local)` | [WIRED v0.5] | Bulk read across a frame range in one update-graph walk |
-| `run_autoposing` | [VERIFIED] | Wraps `AutoPosingTool.AutoPosing` action |
-| `run_autophysics(timeout_sec)` | [VERIFIED] | Wraps `AutoPhysicsTool.Snap to Auto Physics` + polls scene-state hash for convergence |
-| `read_telemetry(names, frames)` | [VERIFIED] | Returns position [x,y,z] + rotation_euler [rx,ry,rz] per controller per frame |
-| `export_fbx(path)` | [VERIFIED] | Real dialog-free export via `FbxSceneLoader.get_fbx_loader(scene).export_all_objects(path)`. Verified file appears (~2.9MB Binary FBX from Cascy) |
-| `import_fbx(path, target=scene|animation)` | [WIRED] | Uses `FbxLoader.import_scene` / `import_animation`. Not yet exercised against a real FBX. |
-| `get_current_frame` | [VERIFIED] | Returns playhead position |
-| `set_current_frame(frame)` | [FIXED v0.2] | Now uses `scene.modify_update_with_session(..., lambda m, u, su, ses: ses.set_current_frame(N))`. Pattern lifted from bundled `commands/export_to_roblox.py`. |
-| `save_scene(path)` / `load_scene(path)` / `new_scene` | [WIRED v0.2] | DataSourceManager + SceneManager — tries multiple call signatures to handle Cascadeur API drift |
-| `get_object_hierarchy` | [WIRED v0.2] | Walks model_viewer with `get_parent_id` / `get_children_ids` (best-effort across API variants) |
-| `get_object_transform(name, frame, local)` | [WIRED v0.2] | Reads Local Position + Local Rotation + Local Scale at frame |
-| `list_object_attributes(name)` | [WIRED v0.2] | Lists every attribute node on the root_group — discovery aid for the LLM |
-| `set_layer_visible(layer_id, visible)` / `set_layer_locked(layer_id, locked)` | [WIRED v0.2] | Uses `session.layers_editor()` with `layer.set_visible/locked()` fallback |
-| `delete_object(name)` | [WIRED v0.2] | `session.model_editor().delete_objects([oid])` → action ID fallback chain |
-| `duplicate_object(name)` | [WIRED v0.2] | Selects + invokes `Scene.Edit.Duplicate`; returns the diff of new objects |
-| `screenshot_viewport(path)` | [WIRED v0.2] | `csc.tools.RenderToFile.editor.take_image(path)` → `Viewport.*` action fallback |
-| `add_layer(name, parent_id?)` / `delete_layer(layer_id)` | [WIRED v0.2] | `session.layers_editor().create_layer/delete_layer`, pattern from `common/layers_operation.py` |
-| `undo()` / `redo()` | [WIRED v0.2] | `Scene.Undo` / `Scene.Redo` action wrappers |
-| `bake_range(layer_id, frame_start, frame_end)` | [WIRED v0.2] | Bakes per-frame keys via `set_fixed_interpolation_or_key_if_need`, pattern from `commands/animation_scripts/reverse_animation.py` |
-| `selection_filter(pattern, mode)` | [WIRED v0.3] | Filters by `contains` / `prefix` / `suffix` / `regex` and replaces selection |
-| `get_active_layer` / `set_active_layer(layer_id)` | [WIRED v0.3] | Tries multiple `current/active/selected_layer_id` getters/setters |
+| `POPPET_URL` | `http://127.0.0.1:8765` | Script server base URL (change if it runs on another port). |
+| `POPPET_TIMEOUT` | `35` | Seconds the MCP server waits for a tool response (must stay above Cascadeur's ~30 s cap). |
 
-Resources:
-- `csc://schema` — live `csc.*` API JSON (134KB) dumped by **Commands → Poppet → Refresh Schema**
+## Tools (45)
 
-## Demo scripts
+Verification legend: **verified** = exercised end-to-end in 0.6 on Cascadeur
+2025.3.3, handler migrated unchanged; **expected** = wired and unit-tested, not yet
+re-verified live on 2026.2.3; **known risk** = flagged by the static 2026.2.3 API
+audit ([docs/research/python-api-diff.md](docs/research/python-api-diff.md));
+**new** = added in 1.0. 1.0 has not been re-verified tool-by-tool against a live
+2026.2.3 session; the protocol path is covered by integration tests against
+Cascadeur's *shipped* server (`tests/native_server_harness.py`). Treat `expected` as
+"should work — report if not".
 
-### `scripts/demo_batch_spec4.py` (recommended)
+### Scene & objects
 
-Writes all 8 spec §4 operations to the request queue at once. You click Process Pending **once**, the script reads all responses. Run:
-
-```powershell
-.venv\Scripts\python.exe scripts\demo_batch_spec4.py
-# In Cascadeur: click Commands → Poppet → Process Pending
-```
-
-Verified output:
-```
-[success] 00-scene_info
-[success] 01-objects_list
-[success] 02-set_controller_position pelvis_Box -> applied {position: true, position_new: [0,0,30]}
-[success] 03-selection_set foot_Box_l + foot_Box_r -> resolved 2, missing 0
-[success] 04-autopose_run -> invoked
-[success] 05-autophysics_run -> converged: true
-[success] 06-telemetry_read pelvis_Box -> position [0.0002, 48.14, 11.22], euler [...]
-[success] 07-fbx_export -> exists: true, size_bytes: 2888032
-[OK] FBX exported to ./tmp/poppet_demo.fbx (2888032 bytes)
-```
-
-### `scripts/demo_mcp_client.py` (per-call MCP via stdio)
-
-Same flow but routes every tool call through the actual `poppet-mcp` server via MCP stdio transport. Requires clicking Process Pending between each call (8 clicks total). Proves the MCP pipe round-trips.
-
-### `scripts/mcp_smoke_test.py` (no Cascadeur required)
-
-Initializes the MCP server, lists 20 tools + 1 resource, exits. Run any time to verify the FastMCP shim:
-
-```powershell
-.venv\Scripts\python.exe scripts\mcp_smoke_test.py
-```
-
-### `scripts/poc_client.py` (low-level wire test)
-
-Raw socket round-trip — predates the file-sync pivot. Kept for archaeological reference; ignore for new work.
-
-## Manual smoke test
-
-```powershell
-# 1. Queue a request
-python -c "
-import json, os, uuid
-base = os.path.join(os.environ['LOCALAPPDATA'], 'poppet-mcp')
-os.makedirs(os.path.join(base, 'requests'), exist_ok=True)
-rid = 'manual-' + str(uuid.uuid4())[:8]
-with open(os.path.join(base, 'requests', rid + '.json'), 'w') as f:
-    json.dump({'type': 'scene_info', 'params': {}}, f)
-print('queued', rid)
-"
-
-# 2. In Cascadeur: Commands → Poppet → Process Pending
-
-# 3. Read response
-type %LOCALAPPDATA%\poppet-mcp\responses\manual-*.json
-```
-
-## Known limitations
-
-| What | Why |
+| Tools | Verification / notes |
 |---|---|
-| Auto-drain via `scene_activated` only fires on focus changes | The event semantics are focus-edge-triggered, not wall-clock periodic. If the Cascadeur window is already focused and idle, no drain happens — `_nudge` re-focuses the window to force the edge transition. Manual drain (Process Pending menu / Status dialog) is always available. |
-| Auto-nudge via Windows-API key-send is flaky | `SetForegroundWindow` is blocked when the MCP server process doesn't already have focus (Windows focus-stealing prevention) |
-| Higher per-call latency (~100–500ms file IO) | Inherent to the file-sync architecture vs the original socket design |
-| `import_fbx` not exercised end-to-end | Wired but no test FBX run against a real file yet |
+| `get_scene_info()` | verified — name, frame, counts, whether a scene is open |
+| `list_objects(name_contains?)` | verified — id/name/type, optional substring filter |
+| `get_current_frame()` / `set_current_frame(frame)` | verified — `set` readback can lag one drain; trust the viewport |
+| `get_object_transform(object_name, frame?, local?)` | expected |
+| `get_object_hierarchy()` | known risk — audit flags the parent/children call shape |
+| `list_object_attributes(object_name)` | expected — discovery aid for `execute_csc_code` |
 
-## Cascadeur quirks worth knowing
+### Selection
 
-- **Joint vs Box objects**: Cascy has both. Joints are skeleton bones (`pelvis`, `thigh_l`). **Controllers** are the `_Box`-suffixed objects (`pelvis_Box`, `foot_Box_l`) — those are what you actually animate.
-- **`scene` parameter** to a command's `run(scene)` is a `csc.domain.Scene`, NOT `csc.view.Scene`. `scene.model_viewer()` and `scene.modify_with_session(...)` work directly.
-- **`ScriptsDir` in `settings.json` is a hard replacement, not additive.** Setting it removes the bundled scripts dir and Cascadeur FATAL-crashes on startup (no rig "parts"). Use `Python.Path` + `Python.Commands` instead — see `install.ps1`.
-- **Cascadeur uses Qt6** in C++, but the embedded Python has zero PySide. `Qt6Core.dll`/`Qt6Gui.dll` etc. are bundled but not accessible from Python.
-- **`call_action` is fire-and-forget.** No completion signal. For solves like AutoPhysics, poll scene state (see `_d_autophysics_run`).
-- **csc.math has no public Vec3 constructor.** Read existing value, build deltas as plain lists, set the sum (Vec3-likes auto-coerce). `_quat_to_euler_xyz` helper in `_dispatchers.py` because `csc.math.Quaternion` also has no public ctor in `dir()`.
+| Tools | Verification / notes |
+|---|---|
+| `get_selection()` / `set_selection(names)` / `clear_selection()` | verified — undo-wrapped |
+| `selection_extend(names)` / `selection_subtract(names)` | expected — set union / difference |
+| `selection_filter(pattern, mode=contains\|prefix\|suffix\|regex)` | expected |
 
-## License
+### Pose & telemetry
 
-MIT. See [LICENSE](LICENSE).
+| Tools | Verification / notes |
+|---|---|
+| `set_controller_position(controller_id, frame, x, y, z)` | verified — world-space, creates a key |
+| `set_controller_rotation(controller_id, frame, qx, qy, qz, qw)` | verified |
+| `set_controller_scale(controller_id, frame, sx, sy, sz, local?)` | expected |
+| `read_telemetry(controller_ids, frames)` | verified — position + Euler rotation |
+| `read_telemetry_range(controller_ids, start, end, step?, local?)` | expected — one update-graph walk |
 
-## Status
+### Layers & keyframes
 
-Alpha. The file-sync architecture is verified working end-to-end against Cascadeur 2025.3.3 + the bundled CASCY sample. Most tools are exercised against real data. Some refinements remain (see Tools table).
+| Tools | Verification / notes |
+|---|---|
+| `list_layers()` | known risk — visibility/lock/object-count fields may be missing; id/name/key counts reliable |
+| `get_keyframes(layer_id, frame_start, frame_end)` | verified — inclusive range |
+| `add_keyframe(layer_id, frame)` / `remove_keyframe(layer_id, frame)` | expected |
+| `add_layer(name, parent_id?)` / `delete_layer(layer_id)` | expected |
+| `set_layer_visible(layer_id, visible)` / `set_layer_locked(layer_id, locked)` | known risk — audit flags argument order |
+| `bake_range(layer_id, frame_start, frame_end)` | expected — per-frame keys |
+| `get_active_layer()` / `set_active_layer(layer_id)` | expected — mapped to the timeline layer selection; 2026.2 has no separate "active layer" API |
 
-GitHub: https://github.com/figgiee/poppet
+### Solvers
+
+| Tools | Verification / notes |
+|---|---|
+| `run_autoposing()` | verified — current frame, near-instant |
+| `run_autophysics(timeout_sec=30.0)` | verified (2025.3.3); keep `timeout_sec` ≤ ~25 s under the script-server cap |
+
+### Scene & FBX I/O
+
+| Tools | Verification / notes |
+|---|---|
+| `save_scene(path)` / `load_scene(path)` / `new_scene()` | expected — `.casc` save/open/create |
+| `import_fbx(path, target=scene\|animation)` | expected — semantics not exercised end-to-end |
+| `export_fbx(path)` | verified — dialog-free binary FBX, ~2.9 MB for Cascy |
+
+### Object edit & viewport
+
+| Tools | Verification / notes |
+|---|---|
+| `delete_object(name)` / `duplicate_object(name)` | known risk — audit flags the call shapes |
+| `undo()` / `redo()` | expected — `Scene.Undo` / `Scene.Redo` |
+| `screenshot_viewport(path?)` | known risk — `RenderToFile.take_image` arity may differ; check `exists` |
+
+### Escape hatches & diagnostics
+
+| Tools | Verification / notes |
+|---|---|
+| `execute_csc_code(code)` | verified — in-app Python via `poppet_rt`; `csc`, `scene`, `app` in scope |
+| `call_action(action_id)` | verified — any menu/toolbar action ID, fire-and-forget |
+| `run_script(code)` | new / `[needs live verification]` — raw script-server pass-through, returns `{ok, value, messages, error}` |
+| `get_script_server_status()` | new — `connected`, `url`, `server_version`, `runtime_version`, `python`, `has_scene`, or `error` |
+
+Resource: `csc://schema` — live JSON of the connected Cascadeur's `csc.*` API surface,
+introspected at read time (matches the exact build you are driving).
+
+## Migrating from 0.6 (file queue) to 1.0
+
+1. Delete the old Cascadeur-side package (skip if you never used 0.6):
+   `%LOCALAPPDATA%\Nekki Limited\Cascadeur\user_scripts\poppet\` and
+   `...\user_scripts\poppet_events\`.
+2. Optionally remove Poppet entries from `Python.Path` / `Python.Commands` /
+   `Python.Events` in Cascadeur's `settings.json` (harmless if left; no longer used).
+   Restart Cascadeur once so the old menu commands disappear.
+3. Start Cascadeur's script server: **Scripts → MCP → Start script server**.
+4. Keep your MCP client entry as-is (`uvx poppet-mcp` or
+   `python -m poppet_mcp.server`). Tool names/parameters are unchanged; new tools are
+   `get_script_server_status` and `run_script`.
+5. Forget the old drain step, focus nudge and queue directories.
+
+Cascadeur 2025.3.x users: stay on
+[v0.6.0](https://github.com/figgiee/poppet/releases/tag/v0.6.0).
+
+## Why Poppet?
+
+Cascadeur's built-in server exposes one tool (`run_script`) and two resources. Poppet
+adds the typed, verified layer: 45 named tools, a live API schema, structured errors,
+and an in-app runtime that keeps handler logic out of prompts. Of the public Cascadeur
+MCP servers surveyed in [docs/research/github-landscape.md](docs/research/github-landscape.md),
+Poppet is the only install-free typed implementation built on the native server.
+
+## Docs
+
+[USAGE.md](USAGE.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) ·
+[docs/architecture.md](docs/architecture.md) ·
+[docs/mcp_client_configs.md](docs/mcp_client_configs.md) ·
+[docs/research/](docs/research/README.md). License: MIT — see [LICENSE](LICENSE).
+Poppet is independent of Nekki; Cascadeur is a trademark of Nekki Limited.

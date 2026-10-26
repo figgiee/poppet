@@ -1,26 +1,87 @@
-"""Command dispatchers — one function per Poppet wire command.
+"""Poppet in-app runtime — executed *inside* Cascadeur 2026.2+.
 
-Runs inside Cascadeur's embedded Python 3.8 on the Qt main thread (under
-process_pending.run). Mutations wrap in `scene.modify(...)` or
-`scene.modify_with_session(...)` for undo safety, matching the pattern used
-by Cascadeur's own bundled commands.
+This file is not imported by the MCP server process. Its source text is shipped
+to Cascadeur's built-in MCP script server (``Scripts -> MCP -> Start script
+server``) on the first tool call, then executed there as a private module named
+``poppet_rt``. The Cascadeur side of Poppet therefore has **no install step**.
 
-The `scene` parameter is a `csc.domain.Scene` (NOT `csc.view.Scene`) — same as
-Cascadeur passes to every command's run(). So `scene.selector()`,
-`scene.model_viewer()`, `scene.layers_viewer()`, `scene.modify_with_session(...)`
-all work directly.
+Contract with the MCP side (see ``src/poppet_mcp/_expression.py``)::
 
-The patterns here are derived from Cascadeur's own bundled commands in
-resources/scripts/python/commands/ — see change_namespace.py, restore_values.py,
-common/selection_operations.py, common/layers_operation.py.
+    dispatch(request_json, scene, csc, app) -> str
+
+``request_json`` is ``{"command": str, "params": {...}}`` and the return value is
+a JSON string ``{"status": "success", "result": ...}`` or
+``{"status": "error", "message": str, "traceback": str}``.
+
+Every handler runs on Cascadeur's Qt main thread, inside a ``scene_idle`` event —
+the same context bundled Cascadeur commands run in — so mutating handlers use the
+same undo-friendly ``scene.modify*`` patterns as Nekki's own scripts.
+
+The handlers below were migrated from Poppet 0.6's file-queue dispatchers; the
+command names and parameter shapes are unchanged so the MCP tool surface (and
+any agent prompt written against it) keeps working.
 """
 
+from __future__ import annotations
+
+import json
 import os
+import sys
 import time
 import traceback
 
+# Bump when the wire contract or handler semantics change. The MCP client reads
+# this value out of the source text (see runtime/__init__.py) and re-bootstraps
+# the in-app module whenever the running version differs.
+RUNTIME_VERSION = "1.0.0"
 
-def dispatch(message, scene):
+
+# ---------------------------------------------------------------------------
+# Entry points
+# ---------------------------------------------------------------------------
+
+
+def dispatch(request_json, scene, csc, app):
+    """JSON entry point used by the expression the MCP server submits."""
+    try:
+        request = json.loads(request_json)
+        message = {
+            "type": request.get("command"),
+            "params": request.get("params") or {},
+        }
+        response = _dispatch_legacy(message, scene)
+    except Exception:
+        response = {
+            "status": "error",
+            "message": "malformed poppet request",
+            "traceback": traceback.format_exc(),
+        }
+    try:
+        return json.dumps(response, default=_json_default)
+    except Exception:
+        return json.dumps(
+            {
+                "status": "error",
+                "message": "in-app result was not JSON-serialisable",
+                "traceback": traceback.format_exc(),
+            }
+        )
+
+
+def _json_default(obj):
+    """Last-resort encoder for Cascadeur API values (ObjectId and friends)."""
+    try:
+        return str(obj)
+    except Exception:
+        return repr(obj)
+
+
+# ---------------------------------------------------------------------------
+# Helpers (csc utilities adapted from Cascadeur's common/selection_operations.py)
+# ---------------------------------------------------------------------------
+
+
+def _dispatch_legacy(message, scene):
     """Route a single request to its handler and wrap the response."""
     cmd_type = message.get("type")
     params = message.get("params") or {}
@@ -36,11 +97,6 @@ def dispatch(message, scene):
             "message": f"{type(e).__name__}: {e}",
             "traceback": traceback.format_exc(),
         }
-
-
-# ============================================================================
-# Helpers (csc utilities adapted from common/selection_operations.py)
-# ============================================================================
 
 
 def _safe_repr(obj):
@@ -88,6 +144,47 @@ def _find_obj_by_name(scene, name):
         except Exception:
             continue
     return None
+
+
+def _checked_modify(scene, title, callback, *, session=False, update=False):
+    """Run a ``scene.modify*`` call and treat an explicit ``False`` as failure.
+
+    Cascadeur logs modify-callback exceptions to its event log and returns
+    ``False`` instead of re-raising them (documented by the 2026.2 shipped script
+    server). Ignoring that return value is how a handler reports success while
+    nothing changed, so every mutating handler routes through here.
+
+    ``session`` selects the ``*_with_session`` variants; ``update`` selects the
+    ``*_update*`` variants (both may be set).
+    """
+    if session and update:
+        ok = scene.modify_update_with_session(title, callback)
+    elif session:
+        ok = scene.modify_with_session(title, callback)
+    elif update:
+        ok = scene.modify_update(title, callback)
+    else:
+        ok = scene.modify(title, callback)
+    if ok is False:
+        raise RuntimeError(
+            f"Cascadeur rejected {title!r}: the modify callback failed "
+            "(traceback is in Cascadeur's event log)"
+        )
+    return ok
+
+
+def _animation_range(scene):
+    """Return ``(first, last)`` frames covering the scene animation.
+
+    Verified stub: ``csc.domain.Scene.data_viewer()`` ->
+    ``csc.model.DataViewer.get_animation_size()`` (a frame count).
+    """
+    try:
+        size = int(scene.data_viewer().get_animation_size())
+        return 0, max(0, size - 1)
+    except Exception:
+        frame = int(scene.get_current_frame() or 0)
+        return frame, frame
 
 
 # ============================================================================
@@ -197,7 +294,8 @@ def _d_selection_set(params, scene):
     def mod(model, update, sc, session):
         session.take_selector().select(set(resolved), focus)
 
-    scene.modify_with_session("Poppet: set selection", mod)
+    # csc.domain.Scene.modify_with_session(str, Callable) -> bool
+    _checked_modify(scene, "Poppet: set selection", mod, session=True)
     return {
         "requested": names,
         "resolved_count": len(resolved),
@@ -212,7 +310,7 @@ def _d_selection_clear(params, scene):
     def mod(model, update, sc, session):
         session.take_selector().select(set(), csc.model.ObjectId.null())
 
-    scene.modify_with_session("Poppet: clear selection", mod)
+    _checked_modify(scene, "Poppet: clear selection", mod, session=True)
     return {"cleared": True}
 
 
@@ -262,8 +360,10 @@ def _d_layers_list(params, scene):
                     info["name"] = str(n)
             except Exception:
                 pass
+            # 2026.2: obj_ids / is_visible / is_locked are properties, not
+            # methods (csc.layers.Layer.obj_ids, .is_visible, .is_locked).
             try:
-                info["obj_id_count"] = len(list(layer.obj_ids()))
+                info["obj_id_count"] = len(layer.obj_ids)
             except Exception:
                 pass
             try:
@@ -271,11 +371,11 @@ def _d_layers_list(params, scene):
             except Exception:
                 pass
             try:
-                info["is_visible"] = layer.is_visible()
+                info["is_visible"] = layer.is_visible
             except Exception:
                 pass
             try:
-                info["is_locked"] = layer.is_locked()
+                info["is_locked"] = layer.is_locked
             except Exception:
                 pass
         except Exception as e:
@@ -326,16 +426,24 @@ def _d_keyframe_set(params, scene):
     Params:
       controller_id: str (object name OR uuid string)
       frame: int
-      position: [x, y, z]  (optional — sets "Position" or "Local Position")
-      rotation_quat: [qx, qy, qz, qw]  (optional — sets "Rotation" or "Local Rotation")
+      transform: {"position": [x, y, z]} and/or {"rotation": [qx, qy, qz, qw]}
+          — the envelope the MCP tool layer sends (set_controller_position /
+          set_controller_rotation)
+      position: [x, y, z]  (legacy flat form, still accepted)
+      rotation_quat: [qx, qy, qz, qw]  (legacy flat form, still accepted)
       local: bool (default True — use "Local Position"/"Local Rotation" instead of world)
     """
     import csc
 
     controller = params.get("controller_id")
     frame = int(params["frame"])
-    position = params.get("position")
-    rotation_quat = params.get("rotation_quat")
+    # The MCP tool layer forwards both channels as {"transform": {...}}; the
+    # legacy flat position/rotation_quat keys stay accepted for old clients.
+    transform = params.get("transform")
+    if not isinstance(transform, dict):
+        transform = {}
+    position = params.get("position", transform.get("position"))
+    rotation_quat = params.get("rotation_quat", transform.get("rotation"))
     use_local = params.get("local", True)
 
     if not controller:
@@ -376,7 +484,7 @@ def _d_keyframe_set(params, scene):
         except Exception as e:
             _ext_err["value"] = str(e)
 
-    scene.modify_with_session("Poppet: extend animation for keyframe", _extend_mod)
+    _checked_modify(scene, "Poppet: extend animation for keyframe", _extend_mod, session=True)
 
     actuals_acc = []
     applied = {"position": False, "rotation": False, "frame": frame}
@@ -397,20 +505,10 @@ def _d_keyframe_set(params, scene):
                 if pos_attr is None:
                     applied["position_error"] = f"node {pos_node_name!r} not on {controller!r}"
                 else:
-                    try:
-                        current = pos_attr.value(frame)
-                    except Exception:
-                        current = None
-                    if current is not None:
-                        # Type-preserving: delta from current keeps Vec3-like type.
-                        delta = [
-                            float(position[0]) - float(current[0]),
-                            float(position[1]) - float(current[1]),
-                            float(position[2]) - float(current[2]),
-                        ]
-                        new_pos = current + delta
-                    else:
-                        new_pos = [float(position[0]), float(position[1]), float(position[2])]
+                    # Write an explicit 3-vector. csc.update.RegularData.set_value
+                    # accepts np.float32[3,1] or a 3-sequence; adding a list to the
+                    # array returned by value() broadcasts to (3,3) and corrupts it.
+                    new_pos = [float(position[0]), float(position[1]), float(position[2])]
                     pos_attr.set_value(new_pos, frame)
                     actuals.add(pos_attr.data_id())
                     applied["position"] = True
@@ -425,8 +523,9 @@ def _d_keyframe_set(params, scene):
                     applied["rotation_error"] = f"node {rot_node_name!r} not on {controller!r}"
                 else:
                     qx, qy, qz, qw = (float(x) for x in rotation_quat)
-                    euler = _quat_to_euler_xyz(qx, qy, qz, qw)
-                    rot_val = csc.math.Rotation.from_euler(euler)
+                    # csc.math.Rotation.from_quaternion(w, x, y, z) — no
+                    # quaternion→Euler→Rotation round-trip (and no gimbal cases).
+                    rot_val = csc.math.Rotation.from_quaternion(qw, qx, qy, qz)
                     rot_attr.set_value(rot_val, frame)
                     actuals.add(rot_attr.data_id())
                     applied["rotation"] = True
@@ -440,7 +539,14 @@ def _d_keyframe_set(params, scene):
             except Exception as e:
                 applied["run_update_error"] = f"{type(e).__name__}: {e}"
 
-    scene.modify_update("Poppet: set keyframe", mod)
+    _checked_modify(scene, "Poppet: set keyframe", mod, update=True)
+    errors = [
+        applied[key]
+        for key in ("error", "position_error", "rotation_error", "run_update_error")
+        if key in applied
+    ]
+    if errors:
+        raise RuntimeError("; ".join(str(err) for err in errors))
     return {
         "controller": controller,
         "obj_id": _id_str(obj_id),
@@ -611,7 +717,7 @@ def _d_telemetry_read(params, scene):
                 per_frame[str(f)] = entry
             telemetry[label] = per_frame
 
-    scene.modify_update("Poppet: read telemetry", mod)
+    _checked_modify(scene, "Poppet: read telemetry", mod, update=True)
     return {
         "telemetry": telemetry,
         "frames": frames,
@@ -740,9 +846,13 @@ def _d_frame_set(params, scene):
             err["value"] = f"{type(e).__name__}: {e}"
 
     try:
-        scene.modify_update_with_session("Poppet: set frame", mod)
+        # csc.domain.Scene.modify_update_with_session(...) -> bool; False means the
+        # callback failed and Cascadeur only logged the traceback.
+        _checked_modify(scene, "Poppet: set frame", mod, session=True, update=True)
     except Exception as e:
         err["value"] = f"modify_update_with_session: {type(e).__name__}: {e}"
+    if err["value"]:
+        raise RuntimeError(f"could not move the playhead to frame {frame}: {err['value']}")
 
     actual = scene.get_current_frame()
     out = {
@@ -752,8 +862,6 @@ def _d_frame_set(params, scene):
         # visual playhead moves correctly even when this reads back 0.
         "note": "playhead moves visually; readback may lag until next drain",
     }
-    if err["value"]:
-        out["error"] = err["value"]
     return out
 
 
@@ -763,10 +871,12 @@ def _d_frame_set(params, scene):
 
 
 def _d_save_scene(params, scene):
-    """Save the current scene to a .casc file via DataSourceManager.
+    """Save the current scene to ``path`` via DataSourceManager.
 
-    Tries several method signatures because the API surface drifts between
-    Cascadeur versions — reports which variant worked.
+    Verified 2026.2 stubs only:
+      * ``csc.app.DataSourceManager.save_scene_as(csc.view.Scene, str)``
+      * ``csc.view.Scene.save(str)`` (fallback)
+    The 2-arg ``save_scene(scene, path)`` / ``dsm.save`` shapes never existed.
     """
     import csc
 
@@ -781,38 +891,40 @@ def _d_save_scene(params, scene):
 
     app = csc.app.get_application()
     dsm = app.get_data_source_manager()
-    cur = app.current_scene()
+    view_scene = app.current_scene()  # csc.app.Application.current_scene() -> csc.view.Scene
 
     last_err = None
     method = None
-    for label, attempt in (
-        ("dsm.save_scene(cur, path)", lambda: dsm.save_scene(cur, normalized)),
-        ("dsm.save_scene(path, cur)", lambda: dsm.save_scene(normalized, cur)),
-        ("dsm.save(cur, path)", lambda: dsm.save(cur, normalized)),
-        ("cur.save(path)", lambda: cur.save(normalized)),
-    ):
+    try:
+        dsm.save_scene_as(view_scene, normalized)
+        method = "DataSourceManager.save_scene_as"
+    except Exception as e:
+        last_err = f"save_scene_as: {type(e).__name__}: {e}"
         try:
-            attempt()
-            method = label
-            last_err = None
-            break
-        except Exception as e:
-            last_err = f"{label}: {type(e).__name__}: {e}"
+            view_scene.save(normalized)
+            method = "view.Scene.save"
+        except Exception as e2:
+            last_err = f"{last_err}; view.Scene.save: {type(e2).__name__}: {e2}"
 
-    out = {"path": normalized}
-    if last_err and not method:
-        out["error"] = last_err
-        out["saved"] = False
-    else:
-        out["method"] = method
-        out["exists"] = os.path.exists(normalized)
-        out["size_bytes"] = os.path.getsize(normalized) if out["exists"] else 0
-        out["saved"] = True
-    return out
+    if method is None:
+        raise RuntimeError(f"could not save the scene: {last_err}")
+    if not os.path.exists(normalized):
+        raise RuntimeError(f"{method} returned but no file was written to {normalized!r}")
+    return {
+        "path": normalized,
+        "method": method,
+        "exists": True,
+        "size_bytes": os.path.getsize(normalized),
+        "saved": True,
+    }
 
 
 def _d_load_scene(params, scene):
-    """Open a .casc file via DataSourceManager.load_scene."""
+    """Open a .casc file via DataSourceManager.load_scene.
+
+    Verified stub: ``csc.app.DataSourceManager.load_scene(str) -> bool``. The
+    ``open_scene`` fallback never existed and was removed.
+    """
     import csc
 
     path = params.get("path")
@@ -824,61 +936,32 @@ def _d_load_scene(params, scene):
 
     app = csc.app.get_application()
     dsm = app.get_data_source_manager()
-
-    last_err = None
-    method = None
-    for label, attempt in (
-        ("dsm.load_scene(path)", lambda: dsm.load_scene(normalized)),
-        ("dsm.open_scene(path)", lambda: dsm.open_scene(normalized)),
-    ):
-        try:
-            attempt()
-            method = label
-            last_err = None
-            break
-        except Exception as e:
-            last_err = f"{label}: {type(e).__name__}: {e}"
-
-    out = {"path": normalized, "loaded": method is not None}
-    if method:
-        out["method"] = method
-    if last_err and not method:
-        out["error"] = last_err
-    return out
+    loaded = dsm.load_scene(normalized)
+    if loaded is False:
+        raise RuntimeError(f"Cascadeur refused to load {normalized!r}")
+    return {
+        "path": normalized,
+        "loaded": True,
+        "method": "DataSourceManager.load_scene",
+    }
 
 
 def _d_new_scene(params, scene):
-    """Create a fresh empty scene via SceneManager.create_application_scene."""
+    """Create a fresh empty scene via SceneManager.create_application_scene.
+
+    Verified stubs: ``csc.app.SceneManager.create_application_scene() ->
+    csc.view.Scene`` and ``set_current_scene(csc.view.Scene)``. The
+    ``create_scene`` / ``new_scene`` fallbacks never existed and were removed.
+    """
     import csc
 
     app = csc.app.get_application()
     sm = app.get_scene_manager()
-
-    last_err = None
-    method = None
-    for label, attempt in (
-        ("sm.create_application_scene()", lambda: sm.create_application_scene()),
-        ("sm.create_scene()", lambda: sm.create_scene()),
-        ("sm.new_scene()", lambda: sm.new_scene()),
-    ):
-        try:
-            ns = attempt()
-            try:
-                sm.set_current_scene(ns)
-            except Exception:
-                pass
-            method = label
-            last_err = None
-            break
-        except Exception as e:
-            last_err = f"{label}: {type(e).__name__}: {e}"
-
-    out = {"created": method is not None}
-    if method:
-        out["method"] = method
-    if last_err and not method:
-        out["error"] = last_err
-    return out
+    view_scene = sm.create_application_scene()
+    if view_scene is None:
+        raise RuntimeError("SceneManager.create_application_scene() returned None")
+    sm.set_current_scene(view_scene)
+    return {"created": True, "method": "SceneManager.create_application_scene"}
 
 
 # ============================================================================
@@ -887,8 +970,18 @@ def _d_new_scene(params, scene):
 
 
 def _d_object_hierarchy(params, scene):
-    """Walk the scene's object hierarchy returning parent + children per object."""
+    """Walk the scene hierarchy (parent + children) per object.
+
+    In 2026.2 the parent link lives in the object's ``Basic`` behaviour;
+    ModelViewer has no parent/children getters. Verified stubs:
+      * csc.model.BehaviourViewer.get_behaviour_by_name(ObjectId, str) -> BehaviourId
+      * csc.model.BehaviourViewer.get_behaviour_object(BehaviourId, str) -> ObjectId
+      * csc.model.BehaviourViewer.get_children(ObjectId) -> list[BehaviourId]
+      * csc.model.BehaviourViewer.get_behaviour_owner(BehaviourId) -> ObjectId
+      * csc.model.ObjectId.is_null()
+    """
     mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
     out = []
     for oid in mv.get_objects():
         entry = {"id": _id_str(oid)}
@@ -900,27 +993,24 @@ def _d_object_hierarchy(params, scene):
             entry["type"] = mv.get_object_type_name(oid)
         except Exception:
             entry["type"] = None
-        for getter in ("get_parent_id", "get_parent", "parent_id", "parent"):
-            try:
-                fn = getattr(mv, getter, None)
-                if fn is None:
-                    continue
-                pid = fn(oid)
-                if pid is not None:
-                    entry["parent_id"] = _id_str(pid)
-                    break
-            except Exception:
-                continue
-        for getter in ("get_children_ids", "get_children", "children_ids", "children"):
-            try:
-                fn = getattr(mv, getter, None)
-                if fn is None:
-                    continue
-                children = list(fn(oid))
-                entry["children_ids"] = [_id_str(c) for c in children]
-                break
-            except Exception:
-                continue
+        entry["parent_id"] = None
+        try:
+            basic = bv.get_behaviour_by_name(oid, "Basic")
+            parent_id = bv.get_behaviour_object(basic, "parent")
+            if parent_id is not None and not parent_id.is_null():
+                entry["parent_id"] = _id_str(parent_id)
+        except Exception:
+            pass
+        entry["children_ids"] = []
+        try:
+            children = []
+            for behaviour_id in bv.get_children(oid):
+                child_id = bv.get_behaviour_owner(behaviour_id)
+                if child_id is not None and not child_id.is_null():
+                    children.append(_id_str(child_id))
+            entry["children_ids"] = children
+        except Exception:
+            pass
         out.append(entry)
     return {"objects": out, "count": len(out)}
 
@@ -993,7 +1083,7 @@ def _d_object_transform_get(params, scene):
             except Exception as e:
                 out[label + "_error"] = f"{type(e).__name__}: {e}"
 
-    scene.modify_update("Poppet: read transform", mod)
+    _checked_modify(scene, "Poppet: read transform", mod, update=True)
     return out
 
 
@@ -1031,26 +1121,12 @@ def _d_object_attributes_list(params, scene):
                         attrs.append({"repr": _safe_repr(n)})
         except Exception:
             pass
-        # Fallback: recursive children() walk.
-        if not attrs:
-
-            def walk(g, prefix=""):
-                try:
-                    for c in g.children():
-                        n = prefix + (c.name() if hasattr(c, "name") else "?")
-                        attrs.append({"name": n})
-                        try:
-                            walk(c, n + ".")
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-
-            walk(root)
+        # csc.update.Group.nodes() returns the direct child nodes; there is no
+        # children() walker on the update graph (the old fallback never existed).
         out["attributes"] = attrs
         out["count"] = len(attrs)
 
-    scene.modify_update("Poppet: read attributes", mod)
+    _checked_modify(scene, "Poppet: read attributes", mod, update=True)
     return out
 
 
@@ -1074,27 +1150,22 @@ def _d_layer_visible_set(params, scene):
     visible = bool(params.get("visible", True))
     if not layer_id_str:
         raise ValueError("'layer_id' is required")
-    lid, layer = _resolve_layer(scene, layer_id_str)
-    if layer is None:
+    lid, _ = _resolve_layer(scene, layer_id_str)
+    if lid is None:
         raise ValueError(f"layer_id not found: {layer_id_str!r}")
 
-    err = {"value": None}
-
     def mod(model, update, sc, session):
-        try:
-            try:
-                ed = model.layers_editor()
-                ed.set_visible_for_layer(lid, visible)
-            except Exception:
-                layer.set_visible(visible)
-        except Exception as e:
-            err["value"] = f"{type(e).__name__}: {e}"
+        # csc.model.ModelEditor.layers_editor() -> csc.layers.Editor
+        editor = model.layers_editor()
+        # csc.layers.Editor.set_visible_for_layer(is_v: bool, id: csc.Guid)
+        editor.set_visible_for_layer(visible, lid)
 
-    scene.modify_with_session("Poppet: set layer visible", mod)
-    out = {"layer_id": layer_id_str, "visible": visible}
-    if err["value"]:
-        out["error"] = err["value"]
-    return out
+    _checked_modify(scene, "Poppet: set layer visible", mod, session=True)
+    return {
+        "layer_id": layer_id_str,
+        "visible": visible,
+        "method": "set_visible_for_layer",
+    }
 
 
 def _d_layer_locked_set(params, scene):
@@ -1103,27 +1174,22 @@ def _d_layer_locked_set(params, scene):
     locked = bool(params.get("locked", True))
     if not layer_id_str:
         raise ValueError("'layer_id' is required")
-    lid, layer = _resolve_layer(scene, layer_id_str)
-    if layer is None:
+    lid, _ = _resolve_layer(scene, layer_id_str)
+    if lid is None:
         raise ValueError(f"layer_id not found: {layer_id_str!r}")
 
-    err = {"value": None}
-
     def mod(model, update, sc, session):
-        try:
-            try:
-                ed = model.layers_editor()
-                ed.set_locked_for_layer(lid, locked)
-            except Exception:
-                layer.set_locked(locked)
-        except Exception as e:
-            err["value"] = f"{type(e).__name__}: {e}"
+        # csc.model.ModelEditor.layers_editor() -> csc.layers.Editor
+        editor = model.layers_editor()
+        # csc.layers.Editor.set_locked_for_layer(is_l: bool, id: csc.Guid)
+        editor.set_locked_for_layer(locked, lid)
 
-    scene.modify_with_session("Poppet: set layer locked", mod)
-    out = {"layer_id": layer_id_str, "locked": locked}
-    if err["value"]:
-        out["error"] = err["value"]
-    return out
+    _checked_modify(scene, "Poppet: set layer locked", mod, session=True)
+    return {
+        "layer_id": layer_id_str,
+        "locked": locked,
+        "method": "set_locked_for_layer",
+    }
 
 
 # ============================================================================
@@ -1132,9 +1198,15 @@ def _d_layer_locked_set(params, scene):
 
 
 def _d_object_delete(params, scene):
-    """Delete an object by name. Tries model_editor first, falls back to action ID."""
-    import csc
+    """Delete an object by name via the 2026.2 model editor.
 
+    Verified stubs:
+      * csc.model.ModelEditor.delete_objects(set[ObjectId], close_connections=True)
+      * csc.domain.SceneUpdater.generate_update()
+      * csc.domain.SceneUpdater.run_update(set[csc.model.DataId], frame)
+    ``session.model_editor()`` and the ``Scene.Edit.Delete`` action IDs never
+    existed and were removed rather than guessed at.
+    """
     name = params.get("object_name")
     if not name:
         raise ValueError("'object_name' is required")
@@ -1142,53 +1214,33 @@ def _d_object_delete(params, scene):
     if obj_id is None:
         raise ValueError(f"object not found: {name!r}")
 
-    # Strategy 1: model_editor.delete_objects([oid])
-    try:
+    def mod(model, update, scene_updater):
+        # csc.model.ModelEditor.delete_objects(set[csc.model.ObjectId], close_connections=True)
+        model.delete_objects({obj_id})
+        frame = scene.get_current_frame()
+        # csc.domain.SceneUpdater.generate_update() / run_update(set[csc.model.DataId], frame)
+        scene_updater.generate_update()
+        scene_updater.run_update(set(), frame)
 
-        def mod(model, update, sc, session):
-            me = session.model_editor()
-            me.delete_objects([obj_id])
-
-        scene.modify_with_session("Poppet: delete object", mod)
-        return {
-            "deleted": name,
-            "obj_id": _id_str(obj_id),
-            "method": "model_editor.delete_objects",
-        }
-    except Exception as e:
-        last_err = f"model_editor: {type(e).__name__}: {e}"
-
-    # Strategy 2: select then call Scene.Edit.Delete-style action.
-    try:
-
-        def sel(model, update, sc, session):
-            session.take_selector().select({obj_id}, obj_id)
-
-        scene.modify_with_session("Poppet: select for delete", sel)
-    except Exception as e:
-        last_err = f"select: {e}"
-
-    app = csc.app.get_application()
-    am = app.get_action_manager()
-    for action in ("Scene.Edit.Delete", "Edit.Delete", "Object.Delete"):
-        try:
-            am.call_action(action)
-            return {
-                "deleted": name,
-                "obj_id": _id_str(obj_id),
-                "method": f"call_action:{action}",
-            }
-        except Exception as e:
-            last_err = f"{action}: {e}"
-
-    return {"deleted": False, "obj_id": _id_str(obj_id), "last_error": last_err}
+    _checked_modify(scene, "Poppet: delete object", mod, update=True)
+    return {
+        "deleted": name,
+        "obj_id": _id_str(obj_id),
+        "method": "ModelEditor.delete_objects",
+    }
 
 
 def _d_object_duplicate(params, scene):
-    """Duplicate object by selecting it and invoking a duplicate action.
+    """Duplicate an object through the scene clipboard (2026.2 dialog-free path).
 
-    Returns the list of newly-created objects (object names that appeared in
-    the scene between before/after).
+    Mirrors Cascadeur 2026.2's bundled ``commands/copy_paste_objects/duplicate.py``.
+    Verified stubs:
+      * csc.app.Application.get_scene_clipboard() -> csc.parts.SceneClipboard
+      * csc.parts.SceneClipboard.copy(csc.view.Scene)
+      * csc.parts.SceneClipboard.paste_with_session(csc.view.Scene, csc.domain.Session)
+      * csc.model.BehaviourEditor.set_behaviour_model_object(BehaviourId, str, ObjectId)
+      * csc.model.ModelEditor.move_obj_ids_in_layers(list[ObjectId], csc.Guid)
+    The action-ID fallbacks (Scene.Edit.Duplicate et al.) never existed.
     """
     import csc
 
@@ -1199,49 +1251,69 @@ def _d_object_duplicate(params, scene):
     if obj_id is None:
         raise ValueError(f"object not found: {name!r}")
 
-    before = set()
-    try:
-        for oid in scene.model_viewer().get_objects():
-            before.add(_id_str(oid))
-    except Exception:
-        pass
-
-    def sel(model, update, sc, session):
-        session.take_selector().select({obj_id}, obj_id)
-
-    scene.modify_with_session("Poppet: select for duplicate", sel)
-
     app = csc.app.get_application()
-    am = app.get_action_manager()
-    last_err = None
-    invoked = None
-    for action in ("Scene.Edit.Duplicate", "Edit.Duplicate", "Object.Duplicate"):
-        try:
-            am.call_action(action)
-            invoked = action
-            break
-        except Exception as e:
-            last_err = f"{action}: {e}"
+    view_scene = app.current_scene()  # csc.app.Application.current_scene()
+    clipboard = app.get_scene_clipboard()  # csc.app.Application.get_scene_clipboard()
+    mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
+    lv = scene.layers_viewer()
 
-    after = []
+    before_ids = set()
     try:
-        for oid in scene.model_viewer().get_objects():
-            sid = _id_str(oid)
-            if sid not in before:
-                try:
-                    nm = scene.model_viewer().get_object_name(oid)
-                    after.append({"id": sid, "name": nm})
-                except Exception:
-                    after.append({"id": sid})
+        before_ids = set(mv.get_objects())
     except Exception:
         pass
 
-    out = {"source": name, "source_id": _id_str(obj_id), "new_objects": after}
-    if invoked:
-        out["invoked"] = invoked
-    if last_err and not invoked:
-        out["error"] = last_err
-    return out
+    original_layer = None
+    try:
+        original_layer = lv.layer_id_by_obj_id(obj_id)
+    except Exception:
+        pass
+
+    original_parent = None
+    try:
+        basic = bv.get_behaviour_by_name(obj_id, "Basic")
+        original_parent = bv.get_behaviour_object(basic, "parent")
+    except Exception:
+        pass
+
+    created_ids = []
+    clipboard.copy(view_scene)
+
+    def mod(model, update, scene_updater, session):
+        clipboard.paste_with_session(view_scene, session)
+        for oid in mv.get_objects():
+            if oid in before_ids:
+                continue
+            created_ids.append(oid)
+            try:
+                if original_parent is not None and not original_parent.is_null():
+                    child_basic = bv.get_behaviour_by_name(oid, "Basic")
+                    model.behaviour_editor().set_behaviour_model_object(
+                        child_basic, "parent", original_parent
+                    )
+            except Exception:
+                pass
+            try:
+                if original_layer is not None:
+                    model.move_obj_ids_in_layers([oid], original_layer)
+            except Exception:
+                pass
+
+    _checked_modify(scene, "Poppet: duplicate object", mod, session=True, update=True)
+
+    new_objects = []
+    for oid in created_ids:
+        try:
+            new_objects.append({"id": _id_str(oid), "name": mv.get_object_name(oid)})
+        except Exception:
+            new_objects.append({"id": _id_str(oid)})
+    return {
+        "source": name,
+        "source_id": _id_str(obj_id),
+        "new_objects": new_objects,
+        "method": "SceneClipboard.paste_with_session",
+    }
 
 
 # ============================================================================
@@ -1250,9 +1322,12 @@ def _d_object_duplicate(params, scene):
 
 
 def _d_viewport_screenshot(params, scene):
-    """Capture the 3D viewport to an image file.
+    """Capture the 3D viewport to a PNG via csc.tools.RenderToFile.
 
-    Tries RenderToFile tool first, falls back to Viewport.* action IDs.
+    Verified 2026.2 stub: ``csc.tools.RenderToFile.take_image(
+    scene_view: csc.view.Scene, render_parameters: csc.tools.RenderParameters,
+    file_name: str)``. The old 1-argument call and the unverified
+    ``Viewport.*`` action fallbacks were removed.
     """
     import csc
 
@@ -1268,48 +1343,24 @@ def _d_viewport_screenshot(params, scene):
         pass
 
     app = csc.app.get_application()
-    last_err = None
-
-    # Strategy 1: RenderToFile tool. `take_image` is directly on the tool
-    # object, NOT under a `.editor(view_scene)` wrapper — the editor()
-    # indirection used pre-v0.6.1 was wrong and silently raised
-    # AttributeError, dropping through to the action fallback. Confirmed live
-    # via exec_csc: `dir(rtf)` is ['play_to_images_sequence',
-    # 'play_to_video_file', 'take_image'], no `editor`.
-    try:
-        tm = app.get_tools_manager()
-        rtf = tm.get_tool("RenderToFile")
-        rtf.take_image(normalized)
-        if os.path.exists(normalized):
-            return {
-                "path": normalized,
-                "exists": True,
-                "size_bytes": os.path.getsize(normalized),
-                "method": "RenderToFile.take_image",
-            }
-        # No exception but file didn't appear — take_image may accept no
-        # args in this Cascadeur version, in which case Cascadeur picked
-        # its own output path. Record that and fall through.
-        last_err = "RenderToFile.take_image returned but file not at requested path"
-    except Exception as e:
-        last_err = f"RenderToFile: {type(e).__name__}: {e}"
-
-    # Strategy 2: Viewport action fallbacks (path arg cannot be passed via call_action).
-    am = app.get_action_manager()
-    for action in ("Viewport.TakeScreenshot", "Viewport.Screenshot", "Render.Image"):
-        try:
-            am.call_action(action)
-            return {
-                "path": normalized,
-                "exists": os.path.exists(normalized),
-                "method": f"call_action:{action}",
-                "note": "action invoked but path arg couldn't be passed — "
-                "Cascadeur may have written to its default screenshot dir.",
-            }
-        except Exception as e:
-            last_err = f"{action}: {e}"
-
-    return {"path": normalized, "exists": False, "error": last_err}
+    # csc.tools.RenderParameters has width / height / samples attributes.
+    render_parameters = csc.tools.RenderParameters()
+    render_parameters.width = 1920
+    render_parameters.height = 1080
+    render_parameters.samples = 1
+    view_scene = app.current_scene()  # csc.app.Application.current_scene() -> csc.view.Scene
+    tool = app.get_tools_manager().get_tool("RenderToFile")  # csc.app.ToolsManager.get_tool
+    tool.take_image(view_scene, render_parameters, normalized)
+    if not os.path.exists(normalized):
+        raise RuntimeError(
+            f"RenderToFile.take_image returned but no image was written to {normalized!r}"
+        )
+    return {
+        "path": normalized,
+        "exists": True,
+        "size_bytes": os.path.getsize(normalized),
+        "method": "RenderToFile.take_image",
+    }
 
 
 # ============================================================================
@@ -1334,12 +1385,9 @@ def _d_layer_add(params, scene):
     out = {"name": name}
 
     def mod(model, update, sc, session):
-        try:
-            le = model.layers_editor()
-        except Exception as e:
-            out["error"] = f"layers_editor: {e}"
-            return
-        # Resolve parent: use stringified id match, fall back to root.
+        # csc.model.ModelEditor.layers_editor() -> csc.layers.Editor
+        editor = model.layers_editor()
+        # Resolve parent: stringified layer id match, else the layers root.
         parent_id = None
         if parent_str:
             for lid in scene.layers_viewer().all_layer_ids():
@@ -1350,17 +1398,16 @@ def _d_layer_add(params, scene):
                 out["parent_warning"] = f"parent_id {parent_str!r} not found; creating at root"
         if parent_id is None:
             try:
+                # csc.layers.Viewer.root_id() -> csc.Guid
                 parent_id = scene.layers_viewer().root_id()
             except Exception:
-                parent_id = csc.layers.LayerId.null() if hasattr(csc, "layers") else None
-        try:
-            new_id = le.create_layer(name, parent_id)
-            out["layer_id"] = _id_str(new_id)
-            out["created"] = True
-        except Exception as e:
-            out["error"] = f"create_layer: {e}"
+                parent_id = csc.Guid.null()  # csc.Guid.null()
+        # csc.layers.Editor.create_layer(name: str, parent: csc.Guid) -> csc.Guid
+        new_id = editor.create_layer(name, parent_id)
+        out["layer_id"] = _id_str(new_id)
+        out["created"] = True
 
-    scene.modify_with_session("Poppet: add layer", mod)
+    _checked_modify(scene, "Poppet: add layer", mod, session=True)
     return out
 
 
@@ -1373,20 +1420,16 @@ def _d_layer_delete(params, scene):
     if lid is None:
         raise ValueError(f"layer_id not found: {layer_id_str!r}")
 
-    err = {"value": None}
-
     def mod(model, update, sc, session):
-        try:
-            le = model.layers_editor()
-            le.delete_layer(lid)
-        except Exception as e:
-            err["value"] = f"{type(e).__name__}: {e}"
+        # csc.layers.Editor.delete_layer(id: csc.Guid)
+        model.layers_editor().delete_layer(lid)
 
-    scene.modify_with_session("Poppet: delete layer", mod)
-    out = {"layer_id": layer_id_str, "deleted": err["value"] is None}
-    if err["value"]:
-        out["error"] = err["value"]
-    return out
+    _checked_modify(scene, "Poppet: delete layer", mod, session=True)
+    return {
+        "layer_id": layer_id_str,
+        "deleted": True,
+        "method": "delete_layer",
+    }
 
 
 def _d_undo(params, scene):
@@ -1454,7 +1497,7 @@ def _d_selection_filter(params, scene):
     def mod(model, update, sc, session):
         session.take_selector().select(set(matched_ids), focus)
 
-    scene.modify_with_session("Poppet: selection_filter", mod)
+    _checked_modify(scene, "Poppet: selection_filter", mod, session=True)
     return {
         "pattern": pattern,
         "mode": mode,
@@ -1464,28 +1507,42 @@ def _d_selection_filter(params, scene):
 
 
 def _d_active_layer_get(params, scene):
-    """Return the currently-active editing layer (id + name)."""
-    lv = scene.layers_viewer()
-    # Try several access paths (API drift).
-    out = {"active_layer_id": None, "active_layer_name": None}
-    for getter in ("current_layer_id", "active_layer_id", "selected_layer_id"):
-        try:
-            fn = getattr(lv, getter, None)
-            if fn is None:
-                continue
-            lid = fn()
-            if lid is None:
-                continue
-            out["active_layer_id"] = _id_str(lid)
-            try:
-                out["active_layer_name"] = lv.layer(lid).name()
-            except Exception:
-                pass
-            out["method"] = getter
-            return out
-        except Exception:
-            continue
-    out["error"] = "no current/active/selected_layer_id method on layers_viewer"
+    """Return the current timeline layer selection (id + name).
+
+    2026.2 has no editing-active-layer API for the layers panel; keyframe writes
+    always address each object's own layer. The nearest verified concept is the
+    layers selection. Verified stubs:
+      * csc.domain.Scene.get_layers_selector() -> csc.layers.Selector
+      * csc.layers.Selector.all_included_layer_ids() / top_layer_id()
+      * csc.layers.Viewer.header(id) -> csc.layers.Header (``name`` attribute)
+    """
+    out = {
+        "active_layer_id": None,
+        "active_layer_name": None,
+        "layer_ids": [],
+        "semantics": "timeline-layer-selection",
+    }
+    try:
+        selector = scene.get_layers_selector()
+        ids = list(selector.all_included_layer_ids())
+    except Exception as e:
+        out["error"] = f"layers selector unavailable: {type(e).__name__}: {e}"
+        return out
+    out["layer_ids"] = [_id_str(lid) for lid in ids]
+    if not ids:
+        return out
+    try:
+        active_id = selector.top_layer_id()
+    except Exception:
+        active_id = ids[0]
+    if active_id is None or active_id.is_null():
+        active_id = ids[0]
+    out["active_layer_id"] = _id_str(active_id)
+    try:
+        lv = scene.layers_viewer()
+        out["active_layer_name"] = str(lv.header(active_id).name)
+    except Exception:
+        pass
     return out
 
 
@@ -1524,7 +1581,7 @@ def _d_selection_extend(params, scene):
     def mod(model, update, sc, session):
         session.take_selector().select(new_set, focus)
 
-    scene.modify_with_session("Poppet: selection_extend", mod)
+    _checked_modify(scene, "Poppet: selection_extend", mod, session=True)
     return {
         "added": [n for n in names if n not in missing],
         "missing": missing,
@@ -1563,7 +1620,7 @@ def _d_selection_subtract(params, scene):
     def mod(model, update, sc, session):
         session.take_selector().select(new_set, focus)
 
-    scene.modify_with_session("Poppet: selection_subtract", mod)
+    _checked_modify(scene, "Poppet: selection_subtract", mod, session=True)
     return {
         "removed": [n for n in names if n not in missing],
         "missing": missing,
@@ -1619,20 +1676,12 @@ def _d_keyframe_add(params, scene):
     if lid is None:
         raise ValueError(f"layer_id not found: {layer_id_str!r}")
 
-    err = {"value": None}
-
     def mod(model, update, sc, session):
-        try:
-            le = model.layers_editor()
-            le.set_fixed_interpolation_or_key_if_need(lid, frame, True)
-        except Exception as e:
-            err["value"] = f"{type(e).__name__}: {e}"
+        # csc.layers.Editor.set_fixed_interpolation_or_key_if_need(Guid, int, bool)
+        model.layers_editor().set_fixed_interpolation_or_key_if_need(lid, frame, True)
 
-    scene.modify_with_session("Poppet: add keyframe", mod)
-    out = {"layer_id": layer_id_str, "frame": frame, "added": err["value"] is None}
-    if err["value"]:
-        out["error"] = err["value"]
-    return out
+    _checked_modify(scene, "Poppet: add keyframe", mod, session=True)
+    return {"layer_id": layer_id_str, "frame": frame, "added": True}
 
 
 def _d_keyframe_remove(params, scene):
@@ -1649,20 +1698,12 @@ def _d_keyframe_remove(params, scene):
     if lid is None:
         raise ValueError(f"layer_id not found: {layer_id_str!r}")
 
-    err = {"value": None}
-
     def mod(model, update, sc, session):
-        try:
-            le = model.layers_editor()
-            le.unset_section(frame, lid)
-        except Exception as e:
-            err["value"] = f"{type(e).__name__}: {e}"
+        # csc.layers.Editor.unset_section(pos: int, id: csc.Guid)
+        model.layers_editor().unset_section(frame, lid)
 
-    scene.modify_with_session("Poppet: remove keyframe", mod)
-    out = {"layer_id": layer_id_str, "frame": frame, "removed": err["value"] is None}
-    if err["value"]:
-        out["error"] = err["value"]
-    return out
+    _checked_modify(scene, "Poppet: remove keyframe", mod, session=True)
+    return {"layer_id": layer_id_str, "frame": frame, "removed": True}
 
 
 def _d_set_controller_scale(params, scene):
@@ -1700,22 +1741,16 @@ def _d_set_controller_scale(params, scene):
     applied = {"frame": frame}
     actuals_acc = []
 
-    _ext_err_s = {"value": None}
-
     def _extend_mod_s(model, update, sc, session):
-        try:
-            le = model.layers_editor()
-            for _lid in list(scene.layers_viewer().all_layer_ids()):
-                try:
-                    le.set_fixed_interpolation_or_key_if_need(_lid, frame, True)
-                except Exception:
-                    pass
-        except Exception as e:
-            _ext_err_s["value"] = str(e)
+        # csc.layers.Editor.set_fixed_interpolation_or_key_if_need(Guid, int, bool)
+        editor = model.layers_editor()
+        for _lid in list(scene.layers_viewer().all_layer_ids()):
+            try:
+                editor.set_fixed_interpolation_or_key_if_need(_lid, frame, True)
+            except Exception:
+                pass
 
-    scene.modify_with_session("Poppet: extend animation for scale", _extend_mod_s)
-    if _ext_err_s["value"]:
-        applied["extend_warning"] = _ext_err_s["value"]
+    _checked_modify(scene, "Poppet: extend animation for scale", _extend_mod_s, session=True)
 
     def mod(model, update, scene_updater):
         actuals = set()
@@ -1729,16 +1764,8 @@ def _d_set_controller_scale(params, scene):
             if attr is None:
                 applied["error"] = f"node {scale_node_name!r} not on {controller!r}"
                 return
-            current = attr.value(frame)
-            if current is not None:
-                delta = [
-                    float(scale[0]) - float(current[0]),
-                    float(scale[1]) - float(current[1]),
-                    float(scale[2]) - float(current[2]),
-                ]
-                new_val = current + delta
-            else:
-                new_val = [float(scale[0]), float(scale[1]), float(scale[2])]
+            # Explicit 3-vector; see _d_keyframe_set for the broadcasting caveat.
+            new_val = [float(scale[0]), float(scale[1]), float(scale[2])]
             attr.set_value(new_val, frame)
             actuals.add(attr.data_id())
             applied["scale_new"] = _vec_to_list(new_val)
@@ -1752,7 +1779,10 @@ def _d_set_controller_scale(params, scene):
             except Exception as e:
                 applied["run_update_error"] = f"{type(e).__name__}: {e}"
 
-    scene.modify_update("Poppet: set scale", mod)
+    _checked_modify(scene, "Poppet: set scale", mod, update=True)
+    errors = [applied[key] for key in ("error", "run_update_error") if key in applied]
+    if errors:
+        raise RuntimeError("; ".join(str(err) for err in errors))
     return {
         "controller": controller,
         "obj_id": _id_str(obj_id),
@@ -1762,7 +1792,15 @@ def _d_set_controller_scale(params, scene):
 
 
 def _d_active_layer_set(params, scene):
-    """Switch the editing-active layer."""
+    """Select ``layer_id`` as the timeline's current layer selection.
+
+    2026.2 has no editing-active-layer API (keyframe writes always address each
+    object's own layer), so the old tool is mapped onto the closest verified
+    concept: the layers selection over the whole animation range. Verified stubs:
+      * csc.domain.Scene.data_viewer() / csc.model.DataViewer.get_animation_size()
+      * csc.domain.Session.take_layers_selector() -> csc.layers.Selector
+      * csc.layers.Selector.set_full_selection_by_parts(list[csc.Guid], int, int)
+    """
     layer_id_str = params.get("layer_id")
     if not layer_id_str:
         raise ValueError("'layer_id' is required")
@@ -1770,36 +1808,19 @@ def _d_active_layer_set(params, scene):
     if lid is None:
         raise ValueError(f"layer_id not found: {layer_id_str!r}")
 
-    err = {"value": None}
-    method_used = {"value": None}
+    first_frame, last_frame = _animation_range(scene)
 
     def mod(model, update, sc, session):
-        try:
-            le = model.layers_editor()
-        except Exception as e:
-            err["value"] = f"layers_editor: {e}"
-            return
-        for setter in ("set_current_layer", "set_active_layer", "set_selected_layer"):
-            try:
-                fn = getattr(le, setter, None)
-                if fn is None:
-                    continue
-                fn(lid)
-                method_used["value"] = setter
-                return
-            except Exception as e:
-                err["value"] = f"{setter}: {e}"
+        selector = session.take_layers_selector()
+        selector.set_full_selection_by_parts([lid], first_frame, last_frame)
 
-    scene.modify_with_session("Poppet: set active layer", mod)
-    out = {"layer_id": layer_id_str}
-    if method_used["value"]:
-        out["method"] = method_used["value"]
-        out["set"] = True
-    else:
-        out["set"] = False
-        if err["value"]:
-            out["error"] = err["value"]
-    return out
+    _checked_modify(scene, "Poppet: select layer", mod, session=True)
+    return {
+        "layer_id": layer_id_str,
+        "set": True,
+        "frame_range": [first_frame, last_frame],
+        "semantics": "timeline-layer-selection",
+    }
 
 
 def _d_bake_range(params, scene):
@@ -1826,30 +1847,17 @@ def _d_bake_range(params, scene):
         "frame_end": frame_end,
         "baked_count": 0,
     }
-    err = {"value": None}
 
     def mod(model, update, sc, session):
-        try:
-            le = model.layers_editor()
-        except Exception as e:
-            err["value"] = f"layers_editor: {e}"
-            return
+        # csc.layers.Editor.set_fixed_interpolation_or_key_if_need(Guid, int, bool)
+        editor = model.layers_editor()
         baked = 0
-        last_err = None
-        for f in range(frame_start, frame_end + 1):
-            try:
-                le.set_fixed_interpolation_or_key_if_need(lid, f, True)
-                baked += 1
-            except Exception as e:
-                last_err = f"frame {f}: {e}"
-                # Continue — best-effort baking.
+        for frame in range(frame_start, frame_end + 1):
+            editor.set_fixed_interpolation_or_key_if_need(lid, frame, True)
+            baked += 1
         out["baked_count"] = baked
-        if last_err and baked == 0:
-            err["value"] = last_err
 
-    scene.modify_with_session("Poppet: bake range", mod)
-    if err["value"]:
-        out["error"] = err["value"]
+    _checked_modify(scene, "Poppet: bake range", mod, session=True)
     return out
 
 
@@ -1858,15 +1866,75 @@ def _d_bake_range(params, scene):
 # ============================================================================
 
 
-def _d_schema_get(params, scene):
-    from . import _introspect
+# ============================================================================
+# Schema (introspection)
+# ============================================================================
 
-    path = _introspect.schema_cache_path()
-    if not os.path.exists(path):
-        _introspect.dump_schema(path)
-    with open(path, encoding="utf-8") as f:
-        schema_json = f.read()
-    return {"path": path, "schema_json_size": len(schema_json), "schema_json": schema_json}
+
+def _extract_module_schema(module_obj, _seen=None, _depth=0, _max_depth=4):
+    """Reflect a module into a JSON-able tree of names, signatures and docs."""
+    import inspect
+
+    if _seen is None:
+        _seen = set()
+    if id(module_obj) in _seen or _depth > _max_depth:
+        return {"_truncated": True}
+    _seen.add(id(module_obj))
+
+    schema = {}
+    for name in dir(module_obj):
+        if name.startswith("__"):
+            continue
+        try:
+            attr = getattr(module_obj, name)
+        except Exception as e:
+            schema[name] = {"type": "unreadable", "error": str(e)}
+            continue
+
+        if inspect.ismodule(attr):
+            schema[name] = _extract_module_schema(attr, _seen, _depth + 1, _max_depth)
+        elif inspect.isclass(attr):
+            schema[name] = {
+                "type": "class",
+                "methods": [m for m in dir(attr) if not m.startswith("__")],
+                "doc": (getattr(attr, "__doc__", "") or "").strip(),
+            }
+        elif callable(attr):
+            try:
+                sig = str(inspect.signature(attr))
+            except (ValueError, TypeError):
+                sig = "(...)"
+            schema[name] = {
+                "type": "function",
+                "signature": sig,
+                "doc": (getattr(attr, "__doc__", "") or "").strip(),
+            }
+        else:
+            schema[name] = {"type": "value", "repr": _schema_safe_repr(attr)}
+    return schema
+
+
+def _schema_safe_repr(obj):
+    try:
+        text = repr(obj)
+    except Exception:
+        return "<unrepresentable>"
+    return text if len(text) <= 200 else text[:200] + "..."
+
+
+def _d_schema_get(params, scene):
+    """Return the live csc.* API surface (cached client-side by the MCP server)."""
+    import csc
+
+    payload = {
+        "csc": _extract_module_schema(csc),
+        "runtime_version": RUNTIME_VERSION,
+    }
+    schema_json = json.dumps(payload, default=str)
+    return {
+        "schema_json_size": len(schema_json),
+        "schema_json": schema_json,
+    }
 
 
 # ============================================================================
@@ -1977,3 +2045,21 @@ _HANDLERS = {
     "selection_subtract": _d_selection_subtract,
     "telemetry_read_range": _d_telemetry_read_range,
 }
+
+
+# ---------------------------------------------------------------------------
+# Liveness
+# ---------------------------------------------------------------------------
+
+
+def _d_ping(params, scene):
+    """Cheap identity/liveness probe: proves the runtime is loaded and on-thread."""
+    return {
+        "pong": True,
+        "runtime_version": RUNTIME_VERSION,
+        "python": sys.version.split()[0],
+        "has_scene": scene is not None,
+    }
+
+
+_HANDLERS["ping"] = _d_ping

@@ -1,11 +1,12 @@
 """Shared pytest fixtures for Poppet.
 
-The Cascadeur-side dispatchers import `csc` lazily (inside function bodies),
-so we install a MagicMock into sys.modules['csc'] BEFORE any test imports
-_dispatchers. This lets the dispatchers run outside Cascadeur for unit tests.
+The in-app runtime imports `csc` lazily (inside handler bodies), so we install a
+MagicMock into sys.modules['csc'] BEFORE any test loads the runtime source. That
+lets handlers run outside Cascadeur for unit tests.
 
-We also expose the cascadeur_side/ tree on sys.path so the `poppet` package
-(not to be confused with the MCP server's `poppet_mcp`) can be imported.
+We also expose `src/` on sys.path so `poppet_mcp` is importable. The temporary
+pytest directory is redirected into the repo (`.pytest-tmp/`) because the host
+sandbox denies directory creation under the OS temp root.
 """
 
 from __future__ import annotations
@@ -19,12 +20,27 @@ import pytest
 # --- sys.path wiring -----------------------------------------------------
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CASCADEUR_SIDE = os.path.join(REPO_ROOT, "cascadeur_side")
 SRC = os.path.join(REPO_ROOT, "src")
 
-for p in (SRC, CASCADEUR_SIDE):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+if SRC not in sys.path:
+    sys.path.insert(0, SRC)
+
+
+def pytest_configure(config):
+    """Keep pytest's tmp dirs inside the writable workspace.
+
+    The host sandbox makes pytest's own temp-dir cleanup unreliable (it tries to
+    enumerate a directory tree the confined process cannot always re-read), so
+    cleanup is disabled here: the directories live in ``.pytest-tmp/`` and are
+    gitignored.
+    """
+    if not config.option.basetemp:
+        base = os.path.join(REPO_ROOT, ".pytest-tmp")
+        os.makedirs(base, exist_ok=True)
+        config.option.basetemp = base
+    import _pytest.pathlib
+
+    _pytest.pathlib.cleanup_dead_symlinks = lambda root: None
 
 
 # --- csc mock — installed at import time, BEFORE _dispatchers imports ----

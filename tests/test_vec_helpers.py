@@ -5,7 +5,8 @@ from __future__ import annotations
 import math
 
 import pytest
-from poppet import _dispatchers
+
+from .runtime_loader import runtime as _dispatchers
 
 # --- _vec_to_list ---------------------------------------------------------
 

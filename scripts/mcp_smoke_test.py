@@ -3,13 +3,13 @@
 Spawns the poppet-mcp server as a subprocess via the MCP client SDK's
 stdio_client, initializes the session, lists tools, and exits.
 
-This does NOT call any tool against Cascadeur (which would require a manual
-Process Pending click). It only proves:
+This does NOT call any tool against Cascadeur. It only proves:
   1. The poppet-mcp console script starts under MCP stdio transport.
   2. The MCP handshake completes (initialize message exchange).
   3. All FastMCP @mcp.tool() decorations registered correctly.
 
-For the full Cascadeur-driving demo, use demo_batch_spec4.py.
+For a real Cascadeur round-trip, run ``python scripts/live_check.py`` against a
+running Cascadeur with **Scripts -> MCP -> Start script server** active.
 """
 
 from __future__ import annotations
@@ -51,10 +51,11 @@ async def run() -> int:
                 print(f"\nlist_resources error (may be normal): {e}")
 
             # Optional end-to-end Cascadeur tool call — set POPPET_LIVE=1 to enable.
-            # Requires Cascadeur running + user clicking Process Pending within the timeout.
+            # Requires Cascadeur running with the built-in script server started
+            # (Scripts -> MCP -> Start script server).
             if os.environ.get("POPPET_LIVE") == "1":
                 print("\n--- live tool call: get_scene_info ---")
-                print(">>> Click Commands -> Poppet -> Process Pending in Cascadeur <<<")
+                print(">>> Requires: Cascadeur open + Scripts -> MCP -> Start script server <<<")
                 r = await session.call_tool("get_scene_info", {})
                 text = r.content[0].text if r.content else str(r)
                 print(text[:600])

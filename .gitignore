@@ -22,3 +22,9 @@ Thumbs.db
 .trees/
 tmp/
 _test_*.pkl
+
+# pytest tmp dir (redirected into the repo for sandbox compatibility)
+.pytest-tmp/
+.test-artifacts/
+.acl-reports/
+.build-check/
