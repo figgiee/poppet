@@ -211,3 +211,13 @@ uvx cascadeur-bootstrap     # then paste the printed exec(open(...)) line in
 
 Open a scene first. The client finds the server port automatically from
 `%LOCALAPPDATA%\cascadeur-mcp\server.json`; set `POPPET_URL` only to override it.
+
+## Prefer zero touch? (optional)
+
+```bash
+uvx cascadeur-autostart --install
+```
+
+Restart Cascadeur once. From then on the script server + keeper start at every launch
+with no console paste. Remove with `cascadeur-autostart --uninstall` (restart after).
+The default console bootstrap keeps working either way.

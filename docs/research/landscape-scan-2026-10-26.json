@@ -1,0 +1,139 @@
+[
+  {
+    "repo": "gprethesh/cascadeur-mcp",
+    "commit": "eb0ca7e29ce159b7dc8c31ee050b67cb6b303680",
+    "commit_date": "2026-09-15",
+    "tool_decorator_hits": 74,
+    "tool_files": [
+      "src\\cascadeur_mcp\\server.py"
+    ],
+    "readme_declared_tool_counts": [],
+    "markers": {
+      "native_8765": false,
+      "native_run_script": true,
+      "user_scripts": false,
+      "q_timer": true,
+      "pyside": true,
+      "console_bootstrap": true,
+      "start_script": true,
+      "acl_or_safety": true,
+      "license": true
+    },
+    "python_files": 12,
+    "has_tests": true
+  },
+  {
+    "repo": "MnxD2A6/cascadeur-mcp",
+    "commit": "fce270366ad90f51847d8ed28c8b6e7373708292",
+    "commit_date": "2026-10-09",
+    "tool_decorator_hits": 5,
+    "tool_files": [
+      "src\\cascadeur_mcp\\server.py"
+    ],
+    "readme_declared_tool_counts": [],
+    "markers": {
+      "native_8765": false,
+      "native_run_script": false,
+      "user_scripts": false,
+      "q_timer": true,
+      "pyside": true,
+      "console_bootstrap": false,
+      "start_script": false,
+      "acl_or_safety": true,
+      "license": true
+    },
+    "python_files": 62,
+    "has_tests": true
+  },
+  {
+    "repo": "Karylcode/cascadeur-mcp-plus",
+    "commit": "916b8961a0a47bfde810e25db2c8d04ab50f00a3",
+    "commit_date": "2026-10-24",
+    "tool_decorator_hits": 0,
+    "tool_files": [],
+    "readme_declared_tool_counts": [
+      27,
+      27
+    ],
+    "markers": {
+      "native_8765": true,
+      "native_run_script": true,
+      "user_scripts": false,
+      "q_timer": true,
+      "pyside": true,
+      "console_bootstrap": true,
+      "start_script": true,
+      "acl_or_safety": true,
+      "license": true
+    },
+    "python_files": 138,
+    "has_tests": true
+  },
+  {
+    "repo": "BrianFinch-1/cascadeur-codex-bridge",
+    "commit": "cda22272494d7b9bc1249fdfab7d310024dfe60e",
+    "commit_date": "2026-10-18",
+    "tool_decorator_hits": 0,
+    "tool_files": [],
+    "readme_declared_tool_counts": [],
+    "markers": {
+      "native_8765": true,
+      "native_run_script": true,
+      "user_scripts": false,
+      "q_timer": true,
+      "pyside": true,
+      "console_bootstrap": true,
+      "start_script": false,
+      "acl_or_safety": true,
+      "license": true
+    },
+    "python_files": 90,
+    "has_tests": true
+  },
+  {
+    "repo": "muhwagwa0112/cascadeur-complete",
+    "commit": "82b350cad4deda2ff5df288f46764a899115252d",
+    "commit_date": "2026-10-01",
+    "tool_decorator_hits": 150,
+    "tool_files": [
+      "src\\cascadeur_complete\\server.py"
+    ],
+    "readme_declared_tool_counts": [],
+    "markers": {
+      "native_8765": false,
+      "native_run_script": false,
+      "user_scripts": true,
+      "q_timer": false,
+      "pyside": false,
+      "console_bootstrap": false,
+      "start_script": false,
+      "acl_or_safety": true,
+      "license": true
+    },
+    "python_files": 91,
+    "has_tests": true
+  },
+  {
+    "repo": "ysk424/cascadeur-mcp",
+    "commit": "725c11e87a526eec1e730050e0a6199843aa832f",
+    "commit_date": "2026-06-16",
+    "tool_decorator_hits": 10,
+    "tool_files": [
+      "src\\cascadeur_mcp\\server.py"
+    ],
+    "readme_declared_tool_counts": [],
+    "markers": {
+      "native_8765": false,
+      "native_run_script": false,
+      "user_scripts": false,
+      "q_timer": false,
+      "pyside": false,
+      "console_bootstrap": true,
+      "start_script": false,
+      "acl_or_safety": false,
+      "license": true
+    },
+    "python_files": 5,
+    "has_tests": false
+  }
+]

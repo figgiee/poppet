@@ -35,9 +35,11 @@ dev = [
 [project.scripts]
 cascadeur-mcp = "poppet_mcp.server:main"
 cascadeur-bootstrap = "poppet_mcp.bootstrap_cli:main"
+cascadeur-autostart = "poppet_mcp.autostart_cli:main"
 # Legacy aliases (the project shipped as poppet-mcp before the rename).
 poppet-mcp = "poppet_mcp.server:main"
 poppet-bootstrap = "poppet_mcp.bootstrap_cli:main"
+poppet-autostart = "poppet_mcp.autostart_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/figgiee/poppet"

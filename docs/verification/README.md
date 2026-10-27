@@ -10,15 +10,17 @@ Target: **Cascadeur 2026.2.3.0.16863** (per-user install,
 | Run | Command | Result | Evidence |
 |---|---|---|---|
 | Offline unit + protocol tests | `pytest tests` | 210 passed, 1 skipped | `tests/` |
-| Tool-level live verification | `python scripts/live_verify.py --scene <Cascy> --screenshot ... --mutations` | **43 / 44 steps passed** | [`live-verify.json`](live-verify.json) |
+| Tool-level live verification | `python scripts/live_verify.py --scene <Cascy> --screenshot ... --mutations` | **45 / 45 steps passed** (including `duplicate_object`) | [`live-verify.json`](live-verify.json) |
 | MCP stdio end-to-end | `python scripts/live_e2e_mcp.py` | passed, 45 tools registered | [`live-e2e-mcp.txt`](live-e2e-mcp.txt) |
 | Published release artifacts | `python scripts/verify_release_artifacts.py --tag v1.0.0` | wheel + sdist metadata/import/entry point | [`release-artifacts.json`](release-artifacts.json) |
-| Full 45-tool capability proof | `python scripts/live_proof_mcp.py` | all 45 tools called via MCP stdio, 8 screenshots, FBX/casc round-trip; 1 known issue (`duplicate_object`) | [`docs/proof/`](../proof/README.md) |
+| Full 45-tool capability proof | `python scripts/live_proof_mcp.py` | all 45 tools called via MCP stdio, **63/63 calls passed**, 8 screenshots, FBX/casc round-trip | [`docs/proof/`](../proof/README.md) |
+| Zero-touch autostart add-on | `cascadeur-autostart --install` + cold Cascadeur launch | server + keeper started with no console/menu action, `ping` OK | Event Log line in `TROUBLESHOOTING.md` |
+| Independent landscape validation | `python scripts/independent_validation.py` | 6 public repos re-cloned at current HEADs and compared | [`docs/research/independent-validation.md`](../research/independent-validation.md) |
 | Clean-venv install from release wheel | `uv venv` + `uv pip install --no-cache <wheel URL>` + `scripts/mcp_smoke_test.py` | `mcp==1.30.0` resolved from the `mcp<2` pin; MCP handshake + 45 tools passed from the installed artifact |
 
-The single failing step is `duplicate_object` — a known 2026.2.3 issue (the scene
-clipboard paste modify callback fails; the tool surfaces a clear error rather than a
-false success). Workaround documented in `TROUBLESHOOTING.md`.
+`duplicate_object` was fixed in this release by using Cascadeur's bundled duplicate
+command (two dispatches: select, then duplicate); geometry objects only — plain joints
+return a clear error.
 
 ## What was exercised live
 

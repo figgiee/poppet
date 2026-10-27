@@ -1,19 +1,19 @@
 {
   "cascadeur": "2026.2.3",
   "url": "http://127.0.0.1:8766",
-  "scene": "Cascy.casc",
+  "scene": "Cascy (3).casc",
   "object_count": 289,
-  "started_at": "2026-10-26T16:07:08",
-  "total": 44,
-  "passed": 43,
-  "failed": 1,
+  "started_at": "2026-10-26T17:09:37",
+  "total": 45,
+  "passed": 45,
+  "failed": 0,
   "results": [
     {
       "step": "ping",
       "command": "ping",
       "params": {},
       "ok": true,
-      "ms": 69,
+      "ms": 62,
       "result": {
         "pong": true,
         "runtime_version": "1.0.0",
@@ -26,7 +26,7 @@
       "command": "ping",
       "params": {},
       "ok": true,
-      "ms": 70,
+      "ms": 60,
       "result": {
         "pong": true,
         "runtime_version": "1.0.0",
@@ -40,8 +40,8 @@
       "result": {
         "ok": true,
         "version": "0.3.1",
-        "idle_subscription": 0,
-        "message_subscription": 0,
+        "idle_subscription": 1,
+        "message_subscription": 1,
         "queued": 0
       }
     },
@@ -52,7 +52,7 @@
         "path": "C:\\Users\\sandv\\AppData\\Local\\Cascadeur\\samples\\Cascy.casc"
       },
       "ok": true,
-      "ms": 563,
+      "ms": 3235,
       "result": {
         "path": "C:/Users/sandv/AppData/Local/Cascadeur/samples/Cascy.casc",
         "loaded": true,
@@ -64,14 +64,14 @@
       "command": "scene_info",
       "params": {},
       "ok": true,
-      "ms": 157,
+      "ms": 165,
       "result": {
         "has_scene": true,
         "current_frame": 0,
         "object_count": 289,
         "layer_count": 13,
         "selection_count": 0,
-        "scene_name": "Cascy.casc"
+        "scene_name": "Cascy (3).casc"
       }
     },
     {
@@ -81,7 +81,7 @@
         "name_contains": null
       },
       "ok": true,
-      "ms": 32,
+      "ms": 61,
       "result": {
         "objects": "<list len=289 truncated>",
         "count": 289
@@ -92,7 +92,7 @@
       "command": "layers_list",
       "params": {},
       "ok": true,
-      "ms": 59,
+      "ms": 159,
       "result": {
         "layers": [
           {
@@ -209,7 +209,7 @@
       "command": "selection_get",
       "params": {},
       "ok": true,
-      "ms": 59,
+      "ms": 70,
       "result": {
         "selected": [],
         "count": 0
@@ -220,7 +220,7 @@
       "command": "frame_get",
       "params": {},
       "ok": true,
-      "ms": 60,
+      "ms": 61,
       "result": {
         "current_frame": 0
       }
@@ -236,7 +236,7 @@
         ]
       },
       "ok": true,
-      "ms": 100,
+      "ms": 73,
       "result": {
         "requested": [
           "pelvis",
@@ -256,7 +256,7 @@
         ]
       },
       "ok": true,
-      "ms": 70,
+      "ms": 56,
       "result": {
         "added": [
           "pelvis"
@@ -274,7 +274,7 @@
         ]
       },
       "ok": true,
-      "ms": 79,
+      "ms": 70,
       "result": {
         "removed": [
           "thigh_l"
@@ -291,7 +291,7 @@
         "mode": "contains"
       },
       "ok": true,
-      "ms": 90,
+      "ms": 123,
       "result": {
         "pattern": "pelvis",
         "mode": "contains",
@@ -316,7 +316,7 @@
       "command": "selection_clear",
       "params": {},
       "ok": true,
-      "ms": 59,
+      "ms": 57,
       "result": {
         "cleared": true
       }
@@ -329,7 +329,7 @@
         "frame": 0
       },
       "ok": true,
-      "ms": 111,
+      "ms": 177,
       "result": {
         "object": "pelvis",
         "frame": 0,
@@ -358,78 +358,30 @@
         "object_name": "pelvis"
       },
       "ok": true,
-      "ms": 120,
+      "ms": 147,
       "result": {
         "object": "pelvis",
         "attributes": [
           {
-            "name": "pelvis.Export Rotate Animation"
-          },
-          {
-            "name": "pelvis.Node Index"
-          },
-          {
-            "name": "pelvis.Joint Width"
-          },
-          {
-            "name": "pelvis.Export Translate Animation"
-          },
-          {
-            "name": "pelvis.T Pose Rotation"
-          },
-          {
-            "name": "pelvis.In"
-          },
-          {
-            "name": "pelvis.Joint Type"
-          },
-          {
-            "name": "pelvis.Actual"
+            "name": "pelvis.External properties"
           },
           {
             "name": "pelvis.SymmetryPlane"
           },
           {
-            "name": "pelvis.Post Rotation"
-          },
-          {
-            "name": "pelvis.Local<->Global Switcher"
-          },
-          {
-            "name": "pelvis.Joint Color"
-          },
-          {
-            "name": "pelvis.External properties"
-          },
-          {
-            "name": "pelvis.Local"
+            "name": "pelvis.Export Scale Animation"
           },
           {
             "name": "pelvis.Model Pose"
           },
           {
-            "name": "pelvis.Use Namespace"
+            "name": "pelvis.Actual"
           },
           {
-            "name": "pelvis.Use custom color"
+            "name": "pelvis.In"
           },
           {
-            "name": "pelvis.Constant Settings"
-          },
-          {
-            "name": "pelvis.Rotation Order"
-          },
-          {
-            "name": "pelvis.Global"
-          },
-          {
-            "name": "pelvis.Matrices"
-          },
-          {
-            "name": "pelvis.Size"
-          },
-          {
-            "name": "pelvis.Export Scale Animation"
+            "name": "pelvis.T Pose Rotation"
           },
           {
             "name": "pelvis.Constant Datas"
@@ -438,16 +390,64 @@
             "name": "pelvis.Basic update"
           },
           {
-            "name": "pelvis.MirrorMode"
+            "name": "pelvis.Export Rotate Animation"
+          },
+          {
+            "name": "pelvis.Joint Width"
+          },
+          {
+            "name": "pelvis.Use Namespace"
           },
           {
             "name": "pelvis.Pre Rotation"
           },
           {
-            "name": "pelvis.Out"
+            "name": "pelvis.Size"
+          },
+          {
+            "name": "pelvis.Rotation Order"
+          },
+          {
+            "name": "pelvis.Export Translate Animation"
           },
           {
             "name": "pelvis.Is Exported"
+          },
+          {
+            "name": "pelvis.MirrorMode"
+          },
+          {
+            "name": "pelvis.Node Index"
+          },
+          {
+            "name": "pelvis.Post Rotation"
+          },
+          {
+            "name": "pelvis.Use custom color"
+          },
+          {
+            "name": "pelvis.Matrices"
+          },
+          {
+            "name": "pelvis.Local"
+          },
+          {
+            "name": "pelvis.Constant Settings"
+          },
+          {
+            "name": "pelvis.Local<->Global Switcher"
+          },
+          {
+            "name": "pelvis.Joint Color"
+          },
+          {
+            "name": "pelvis.Out"
+          },
+          {
+            "name": "pelvis.Global"
+          },
+          {
+            "name": "pelvis.Joint Type"
           }
         ],
         "count": 29
@@ -458,7 +458,7 @@
       "command": "object_hierarchy",
       "params": {},
       "ok": true,
-      "ms": 60,
+      "ms": 57,
       "result": {
         "objects": "<list len=289 truncated>",
         "count": 289
@@ -473,7 +473,7 @@
         "frame_end": 5
       },
       "ok": true,
-      "ms": 59,
+      "ms": 57,
       "result": {
         "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
         "key_frame_indices": [
@@ -487,7 +487,7 @@
       "command": "active_layer_get",
       "params": {},
       "ok": true,
-      "ms": 70,
+      "ms": 60,
       "result": {
         "active_layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b",
         "active_layer_name": "Head",
@@ -522,7 +522,7 @@
         ]
       },
       "ok": true,
-      "ms": 110,
+      "ms": 130,
       "result": {
         "telemetry": {
           "pelvis": {
@@ -580,7 +580,7 @@
         "local": true
       },
       "ok": true,
-      "ms": 119,
+      "ms": 130,
       "result": {
         "telemetry": {
           "pelvis": {
@@ -649,7 +649,7 @@
         "frame": 3
       },
       "ok": true,
-      "ms": 70,
+      "ms": 59,
       "result": {
         "requested": 3,
         "current_frame": 0
@@ -660,7 +660,7 @@
       "command": "frame_get",
       "params": {},
       "ok": true,
-      "ms": 69,
+      "ms": 61,
       "result": {
         "current_frame": 0
       }
@@ -670,7 +670,7 @@
       "command": "schema_get",
       "params": {},
       "ok": true,
-      "ms": 72,
+      "ms": 71,
       "result": {
         "schema_json_size": 106448
       }
@@ -680,7 +680,7 @@
       "command": "undo",
       "params": {},
       "ok": true,
-      "ms": 59,
+      "ms": 58,
       "result": {
         "invoked": "Scene.Undo"
       }
@@ -690,25 +690,9 @@
       "command": "redo",
       "params": {},
       "ok": true,
-      "ms": 69,
+      "ms": 61,
       "result": {
         "invoked": "Scene.Redo"
-      }
-    },
-    {
-      "step": "screenshot_viewport",
-      "command": "viewport_screenshot",
-      "params": {
-        "path": "C:\\Users\\sandv\\Desktop\\poppet\\.verify-shot.png"
-      },
-      "ok": true,
-      "ms": 63,
-      "result": {
-        "path": "C:/Users/sandv/Desktop/poppet/.verify-shot.png",
-        "exists": false,
-        "size_bytes": 0,
-        "render_started": true,
-        "method": "RenderToFile.take_image"
       }
     },
     {
@@ -726,7 +710,7 @@
         }
       },
       "ok": true,
-      "ms": 697,
+      "ms": 150,
       "result": {
         "controller": "pelvis",
         "obj_id": "ad915519-cc6c-49df-be58-8f223d2735fc",
@@ -751,7 +735,7 @@
         "frame": 5
       },
       "ok": true,
-      "ms": 100,
+      "ms": 131,
       "result": {
         "object": "pelvis",
         "frame": 5,
@@ -786,7 +770,7 @@
         ]
       },
       "ok": true,
-      "ms": 140,
+      "ms": 143,
       "result": {
         "controller": "pelvis",
         "obj_id": "ad915519-cc6c-49df-be58-8f223d2735fc",
@@ -810,7 +794,7 @@
         "frame": 7
       },
       "ok": true,
-      "ms": 80,
+      "ms": 56,
       "result": {
         "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
         "frame": 7,
@@ -841,7 +825,7 @@
         "frame_end": 2
       },
       "ok": true,
-      "ms": 80,
+      "ms": 71,
       "result": {
         "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
         "frame_start": 0,
@@ -857,7 +841,7 @@
         "visible": false
       },
       "ok": true,
-      "ms": 79,
+      "ms": 69,
       "result": {
         "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
         "visible": false,
@@ -872,7 +856,7 @@
         "visible": true
       },
       "ok": true,
-      "ms": 80,
+      "ms": 74,
       "result": {
         "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
         "visible": true,
@@ -887,7 +871,7 @@
         "locked": true
       },
       "ok": true,
-      "ms": 80,
+      "ms": 71,
       "result": {
         "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
         "locked": true,
@@ -902,7 +886,7 @@
         "locked": false
       },
       "ok": true,
-      "ms": 70,
+      "ms": 65,
       "result": {
         "layer_id": "cbba47ba-231d-4765-88e5-25ff633981d5",
         "locked": false,
@@ -916,10 +900,10 @@
         "name": "cascadeur_mcp_live_test"
       },
       "ok": true,
-      "ms": 87,
+      "ms": 113,
       "result": {
         "name": "cascadeur_mcp_live_test",
-        "layer_id": "43d02eaa-f4ad-412b-babd-fad4a03beb6d",
+        "layer_id": "b27035ff-7f69-4b4c-9641-0a259efae7a2",
         "created": true
       }
     },
@@ -927,29 +911,70 @@
       "step": "delete_layer",
       "command": "layer_delete",
       "params": {
-        "layer_id": "43d02eaa-f4ad-412b-babd-fad4a03beb6d"
+        "layer_id": "b27035ff-7f69-4b4c-9641-0a259efae7a2"
       },
       "ok": true,
-      "ms": 82,
+      "ms": 103,
       "result": {
-        "layer_id": "43d02eaa-f4ad-412b-babd-fad4a03beb6d",
+        "layer_id": "b27035ff-7f69-4b4c-9641-0a259efae7a2",
         "deleted": true,
         "method": "delete_layer"
       }
     },
     {
-      "step": "duplicate_object",
+      "step": "duplicate_object_select",
       "command": "object_duplicate",
-      "ok": false,
-      "ms": 28321,
-      "error": "RuntimeError: Cascadeur rejected 'cascadeur-mcp: duplicate object': the modify callback failed (traceback is in Cascadeur's event log)\n\nIn-app traceback:\nTraceback (most recent call last):\n  File \"<poppet_rt>\", line 92, in _dispatch_legacy\n  File \"<poppet_rt>\", line 1299, in _d_object_duplicate\n  File \"<poppet_rt>\", line 169, in _checked_modify\nRuntimeError: Cascadeur rejected 'cascadeur-mcp: duplicate object': the modify callback failed (traceback is in Cascadeur's event log)\n"
+      "params": {
+        "object_name": "Cascy_mesh"
+      },
+      "ok": true,
+      "ms": 102,
+      "result": {
+        "source": "Cascy_mesh",
+        "source_id": "bbe14263-69f7-4f8d-aab2-042169834054",
+        "stage": "selected"
+      }
+    },
+    {
+      "step": "duplicate_object",
+      "command": "object_duplicate_finish",
+      "params": {
+        "object_name": "Cascy_mesh"
+      },
+      "ok": true,
+      "ms": 236,
+      "result": {
+        "source": "Cascy_mesh",
+        "source_id": "bbe14263-69f7-4f8d-aab2-042169834054",
+        "new_objects": [
+          {
+            "id": "83fb11d0-2e75-412f-93e4-a327f8abfd3a",
+            "name": "Cascy_mesh(0)"
+          }
+        ],
+        "method": "commands.copy_paste_objects.duplicate"
+      }
+    },
+    {
+      "step": "delete_duplicate",
+      "command": "object_delete",
+      "params": {
+        "object_name": "Cascy_mesh(0)"
+      },
+      "ok": true,
+      "ms": 166,
+      "result": {
+        "deleted": "Cascy_mesh(0)",
+        "obj_id": "83fb11d0-2e75-412f-93e4-a327f8abfd3a",
+        "method": "ModelEditor.delete_objects"
+      }
     },
     {
       "step": "autopose",
       "command": "autopose_run",
       "params": {},
       "ok": true,
-      "ms": 75,
+      "ms": 59,
       "result": {
         "invoked": "AutoPosingTool.AutoPosing"
       }
@@ -961,7 +986,7 @@
         "path": "C:/Users/sandv/Desktop/cascadeur-mcp/.live-cascy.fbx"
       },
       "ok": true,
-      "ms": 214,
+      "ms": 190,
       "result": {
         "path": "C:/Users/sandv/Desktop/cascadeur-mcp/.live-cascy.fbx",
         "exists": true,
@@ -981,12 +1006,12 @@
         "path": "C:/Users/sandv/Desktop/cascadeur-mcp/.live-cascy-copy.casc"
       },
       "ok": true,
-      "ms": 981,
+      "ms": 200,
       "result": {
         "path": "C:/Users/sandv/Desktop/cascadeur-mcp/.live-cascy-copy.casc",
         "method": "view.Scene.save",
         "exists": true,
-        "size_bytes": 4068699,
+        "size_bytes": 4068700,
         "saved": true,
         "save_pending": false
       }
@@ -996,7 +1021,7 @@
       "command": "undo",
       "params": {},
       "ok": true,
-      "ms": 140,
+      "ms": 143,
       "result": {
         "invoked": "Scene.Undo"
       }

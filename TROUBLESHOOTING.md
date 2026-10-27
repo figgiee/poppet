@@ -84,16 +84,27 @@ marker error, restart Cascadeur and re-run the bootstrap line.
 Most tools need an open scene. `get_script_server_status()` reports `has_scene`; open
 a scene in Cascadeur before calling scene tools.
 
-## Duplicate object fails
+## Duplicate object reports a clean error
 
-`duplicate_object` is a known issue on Cascadeur 2026.2.3 (the clipboard paste modify
-callback fails). Workaround: run Cascadeur's own bundled command through
-`execute_csc_code` after selecting the object:
+`duplicate_object` uses Cascadeur's own bundled duplicate command (in two dispatches:
+select, then duplicate). It works for geometry objects (`*_Box`, meshes). Selecting a
+plain joint (e.g. `pelvis`) makes the bundled command reject the operation; pick a
+geometry object such as `pelvis_Box` instead. This is a Cascadeur command limitation,
+not a Poppet failure.
 
-```python
-import commands.copy_paste_objects.duplicate as dup
-dup.run(scene)
+## Zero-touch autostart (optional)
+
+```bash
+uvx cascadeur-autostart --install    # writes user_scripts/poppet_autostart
+uvx cascadeur-autostart --status
+uvx cascadeur-autostart --uninstall  # restart Cascadeur afterwards
 ```
+
+Restart Cascadeur once after installing. On launch the Event Log shows
+`[cascadeur-mcp] autostart: script server ready`. If it does not, check
+`%LOCALAPPDATA%\cascadeur-mcp\cascadeur_bootstrap.py` exists and that
+`Python.Events` in `settings.json` contains `poppet_autostart` (a backup of
+`settings.json` is written next to it).
 
 ## The client doesn't list cascadeur-mcp
 

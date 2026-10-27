@@ -374,37 +374,23 @@ async def run() -> int:
                 after_names = {obj["name"] for obj in after.get("objects", [])}
                 new_names = sorted(after_names - before_names)
                 print(f"duplicate workaround created: {new_names}")
-                await mcp.shot("07_duplicate_workaround.png")
+                await mcp.shot("07_duplicate_object.png")
                 for duplicate in new_names[:1]:
                     await mcp.call("delete_object", {"object_name": duplicate})
                 await guarded("undelete", mcp.call("undo"))
 
-            # known-issue tool: prove the failure is clean, not a false success.
-            known_args = {"object_name": sorted(before_names)[0]}
-            try:
-                raw = await session.call_tool("duplicate_object", known_args)
-                raw_text = raw.content[0].text if raw.content else ""
-                RESULTS.append(
-                    {
-                        "tool": "duplicate_object",
-                        "args": known_args,
-                        "ok": False,
-                        "known_issue": True,
-                        "error": raw_text[:800],
-                    }
-                )
-                print(f"KNOWN-ISSUE duplicate_object: {raw_text[:120]}")
-            except Exception as exc:  # noqa: BLE001
-                RESULTS.append(
-                    {
-                        "tool": "duplicate_object",
-                        "args": known_args,
-                        "ok": False,
-                        "known_issue": True,
-                        "error": str(exc)[:800],
-                    }
-                )
-                print(f"KNOWN-ISSUE duplicate_object: {str(exc)[:120]}")
+            # duplicate_object now uses Cascadeur's bundled duplicate command through
+            # two dispatches (select, then run); this is the regression proof.
+            duplicate_result = await mcp.call(
+                "duplicate_object", {"object_name": sorted(before_names)[0]}
+            )
+            created = []
+            if isinstance(duplicate_result, dict):
+                created = duplicate_result.get("new_objects") or []
+            print(f"duplicate_object created: {[obj.get('name') for obj in created]}")
+            for obj in created[:1]:
+                if obj.get("name"):
+                    await mcp.call("delete_object", {"object_name": obj["name"]})
 
             await mcp.shot("08_final_viewport.png")
             await guarded("cleanup_new_scene", mcp.call("new_scene"))
@@ -487,9 +473,9 @@ def write_report(proof: dict) -> None:
             "`new_scene` + `import_fbx(target=scene)` re-imported the exported Cascy FBX "
             "(67 objects)."
         ),
-        "07_duplicate_workaround.png": (
-            "documented `duplicate_object` workaround: the bundled duplicate command via "
-            "`execute_csc_code` created Cascy_mesh(0), shown selected."
+        "07_duplicate_object.png": (
+            "`duplicate_object` created a duplicate through Cascadeur's bundled duplicate "
+            "command; the new object is shown selected."
         ),
         "08_final_viewport.png": "final state after delete/undo/cleanup.",
     }
@@ -517,8 +503,8 @@ visible result of the interesting steps with `screenshot_viewport` into
 
 All **{proof["tools_registered"]} registered tools** were called through MCP
 ({len(proof["tools_called"])} unique tools; {proof["passed_calls"]}/{len(proof["results"])}
-calls returned success). The only failure is the documented `duplicate_object`
-2026.2.3 limitation; the bundled-command workaround is demonstrated in screenshot 07.
+calls returned success). `duplicate_object` is exercised through Cascadeur's bundled
+duplicate command (see screenshot 07).
 
 | Tool | Status | Detail |
 |---|---|---|

@@ -35,3 +35,10 @@ _test_*.pkl
 .focus-*
 # bootstrap fallback dir (sandbox temp mapping)
 cascadeur-mcp/
+
+# local validation / Cascadeur-side research scratch
+.validation/
+.autostart-staging/
+.obsolete-user-scripts/
+.verify-shot.png
+.autostart-*.log

@@ -1,6 +1,8 @@
 # Cascadeur MCP landscape — public implementations vs. cascadeur-mcp
 
-Snapshot date: **2026-10-26**. Research-only survey of every public Cascadeur MCP
+Snapshot date: **2026-10-26**. The `cascadeur-mcp` row below describes the pre-1.0
+2025.3.3 file-queue design; for the current 1.0 state and a fresh HEAD-by-HEAD
+re-validation see [independent-validation.md](independent-validation.md). Research-only survey of every public Cascadeur MCP
 implementation found, plus the vendor's built-in server, compared against cascadeur-mcp's
 current design and re-evaluated against the fact that Cascadeur **2026.2 now ships a
 built-in MCP script server**.

@@ -94,8 +94,8 @@
       "dimensions": "1920x1080"
     },
     {
-      "name": "07_duplicate_workaround.png",
-      "path": "docs/proof/screenshots/07_duplicate_workaround.png",
+      "name": "07_duplicate_object.png",
+      "path": "docs/proof/screenshots/07_duplicate_object.png",
       "exists": true,
       "bytes": 2160542,
       "dimensions": "1920x1080"
@@ -104,7 +104,7 @@
       "name": "08_final_viewport.png",
       "path": "docs/proof/screenshots/08_final_viewport.png",
       "exists": true,
-      "bytes": 2160287,
+      "bytes": 2160490,
       "dimensions": "1920x1080"
     }
   ],
@@ -113,7 +113,7 @@
       "tool": "get_script_server_status",
       "args": {},
       "ok": true,
-      "ms": 136,
+      "ms": 137,
       "result": {
         "connected": true,
         "url": "http://127.0.0.1:8766",
@@ -139,7 +139,7 @@
         "path": "C:\\Users\\sandv\\AppData\\Local\\Cascadeur\\samples\\Cascy.casc"
       },
       "ok": true,
-      "ms": 608,
+      "ms": 2862,
       "result": {
         "path": "C:/Users/sandv/AppData/Local/Cascadeur/samples/Cascy.casc",
         "loaded": true,
@@ -150,7 +150,7 @@
       "tool": "get_scene_info",
       "args": {},
       "ok": true,
-      "ms": 141,
+      "ms": 166,
       "result": {
         "has_scene": true,
         "current_frame": 0,
@@ -164,7 +164,7 @@
       "tool": "get_current_frame",
       "args": {},
       "ok": true,
-      "ms": 60,
+      "ms": 70,
       "result": {
         "current_frame": 0
       }
@@ -173,7 +173,7 @@
       "tool": "list_objects",
       "args": {},
       "ok": true,
-      "ms": 60,
+      "ms": 130,
       "result": {
         "objects": "<list len=289>",
         "count": 289
@@ -195,11 +195,11 @@
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/01_cascy_loaded.png"
       },
       "ok": true,
-      "ms": 161,
+      "ms": 157,
       "result": {
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/01_cascy_loaded.png",
         "exists": true,
-        "size_bytes": 287202,
+        "size_bytes": 229774,
         "render_started": true,
         "method": "RenderToFile.take_image"
       }
@@ -208,7 +208,7 @@
       "tool": "list_layers",
       "args": {},
       "ok": true,
-      "ms": 66,
+      "ms": 58,
       "result": {
         "layers": "<list len=13>",
         "count": 13,
@@ -224,7 +224,7 @@
         ]
       },
       "ok": true,
-      "ms": 80,
+      "ms": 70,
       "result": {
         "requested": [
           "pelvis",
@@ -240,11 +240,11 @@
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/02_selection.png"
       },
       "ok": true,
-      "ms": 626,
+      "ms": 158,
       "result": {
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/02_selection.png",
         "exists": true,
-        "size_bytes": 2214519,
+        "size_bytes": 237978,
         "render_started": true,
         "method": "RenderToFile.take_image"
       }
@@ -253,7 +253,7 @@
       "tool": "get_selection",
       "args": {},
       "ok": true,
-      "ms": 63,
+      "ms": 64,
       "result": {
         "selected": [
           {
@@ -293,7 +293,7 @@
         ]
       },
       "ok": true,
-      "ms": 80,
+      "ms": 70,
       "result": {
         "removed": [
           "calf_l"
@@ -309,7 +309,7 @@
         "mode": "contains"
       },
       "ok": true,
-      "ms": 90,
+      "ms": 123,
       "result": {
         "pattern": "pelvis",
         "mode": "contains",
@@ -333,7 +333,7 @@
       "tool": "clear_selection",
       "args": {},
       "ok": true,
-      "ms": 60,
+      "ms": 59,
       "result": {
         "cleared": true
       }
@@ -345,7 +345,7 @@
         "frame": 0
       },
       "ok": true,
-      "ms": 119,
+      "ms": 129,
       "result": {
         "object": "pelvis",
         "frame": 0,
@@ -373,18 +373,12 @@
         "object_name": "pelvis"
       },
       "ok": true,
-      "ms": 110,
+      "ms": 119,
       "result": {
         "object": "pelvis",
         "attributes": [
           {
-            "name": "pelvis.Use custom color"
-          },
-          {
             "name": "pelvis.Export Rotate Animation"
-          },
-          {
-            "name": "pelvis.Is Exported"
           },
           {
             "name": "pelvis.Actual"
@@ -393,76 +387,82 @@
             "name": "pelvis.In"
           },
           {
-            "name": "pelvis.Constant Datas"
+            "name": "pelvis.Out"
           },
           {
-            "name": "pelvis.Basic update"
-          },
-          {
-            "name": "pelvis.Post Rotation"
-          },
-          {
-            "name": "pelvis.Model Pose"
-          },
-          {
-            "name": "pelvis.Local<->Global Switcher"
+            "name": "pelvis.Is Exported"
           },
           {
             "name": "pelvis.Export Scale Animation"
           },
           {
-            "name": "pelvis.Use Namespace"
-          },
-          {
-            "name": "pelvis.Joint Color"
-          },
-          {
-            "name": "pelvis.Pre Rotation"
-          },
-          {
-            "name": "pelvis.Export Translate Animation"
-          },
-          {
-            "name": "pelvis.Constant Settings"
-          },
-          {
-            "name": "pelvis.Global"
-          },
-          {
-            "name": "pelvis.T Pose Rotation"
-          },
-          {
-            "name": "pelvis.Size"
-          },
-          {
-            "name": "pelvis.Joint Width"
-          },
-          {
-            "name": "pelvis.Local"
-          },
-          {
-            "name": "pelvis.External properties"
-          },
-          {
-            "name": "pelvis.Joint Type"
+            "name": "pelvis.Basic update"
           },
           {
             "name": "pelvis.Rotation Order"
           },
           {
-            "name": "pelvis.Node Index"
+            "name": "pelvis.Joint Width"
+          },
+          {
+            "name": "pelvis.Use Namespace"
+          },
+          {
+            "name": "pelvis.Joint Type"
+          },
+          {
+            "name": "pelvis.Local<->Global Switcher"
+          },
+          {
+            "name": "pelvis.Local"
+          },
+          {
+            "name": "pelvis.Post Rotation"
           },
           {
             "name": "pelvis.SymmetryPlane"
           },
           {
+            "name": "pelvis.Node Index"
+          },
+          {
+            "name": "pelvis.External properties"
+          },
+          {
+            "name": "pelvis.Constant Settings"
+          },
+          {
+            "name": "pelvis.Export Translate Animation"
+          },
+          {
+            "name": "pelvis.T Pose Rotation"
+          },
+          {
+            "name": "pelvis.Pre Rotation"
+          },
+          {
+            "name": "pelvis.Model Pose"
+          },
+          {
+            "name": "pelvis.Global"
+          },
+          {
+            "name": "pelvis.Size"
+          },
+          {
+            "name": "pelvis.Use custom color"
+          },
+          {
             "name": "pelvis.MirrorMode"
           },
           {
-            "name": "pelvis.Out"
+            "name": "pelvis.Constant Datas"
           },
           {
             "name": "pelvis.Matrices"
+          },
+          {
+            "name": "pelvis.Joint Color"
           }
         ],
         "count": 29
@@ -481,7 +481,7 @@
         ]
       },
       "ok": true,
-      "ms": 130,
+      "ms": 136,
       "result": {
         "telemetry": {
           "pelvis": {
@@ -547,7 +547,7 @@
         "local": true
       },
       "ok": true,
-      "ms": 119,
+      "ms": 134,
       "result": {
         "telemetry": "<dict len=2>",
         "frames": [
@@ -601,7 +601,7 @@
         "frame": 12
       },
       "ok": true,
-      "ms": 80,
+      "ms": 233,
       "result": {
         "layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b",
         "frame": 12,
@@ -615,7 +615,7 @@
         "frame": 12
       },
       "ok": true,
-      "ms": 80,
+      "ms": 51,
       "result": {
         "layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b",
         "frame": 12,
@@ -630,7 +630,7 @@
         "frame_end": 3
       },
       "ok": true,
-      "ms": 80,
+      "ms": 76,
       "result": {
         "layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b",
         "frame_start": 0,
@@ -648,7 +648,7 @@
         "z": -5.0
       },
       "ok": true,
-      "ms": 150,
+      "ms": 154,
       "result": {
         "controller": "pelvis",
         "obj_id": "ad915519-cc6c-49df-be58-8f223d2735fc",
@@ -676,7 +676,7 @@
         "qw": 0.0
       },
       "ok": true,
-      "ms": 129,
+      "ms": 146,
       "result": {
         "controller": "pelvis",
         "obj_id": "ad915519-cc6c-49df-be58-8f223d2735fc",
@@ -698,7 +698,7 @@
         "sz": 1.0
       },
       "ok": true,
-      "ms": 141,
+      "ms": 161,
       "result": {
         "controller": "pelvis",
         "obj_id": "ad915519-cc6c-49df-be58-8f223d2735fc",
@@ -720,11 +720,11 @@
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/03_keyframe_pose.png"
       },
       "ok": true,
-      "ms": 170,
+      "ms": 160,
       "result": {
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/03_keyframe_pose.png",
         "exists": true,
-        "size_bytes": 311814,
+        "size_bytes": 229774,
         "render_started": true,
         "method": "RenderToFile.take_image"
       }
@@ -733,7 +733,7 @@
       "tool": "undo",
       "args": {},
       "ok": true,
-      "ms": 110,
+      "ms": 150,
       "result": {
         "invoked": "Scene.Undo"
       }
@@ -742,7 +742,7 @@
       "tool": "redo",
       "args": {},
       "ok": true,
-      "ms": 120,
+      "ms": 141,
       "result": {
         "invoked": "Scene.Redo"
       }
@@ -751,7 +751,7 @@
       "tool": "get_active_layer",
       "args": {},
       "ok": true,
-      "ms": 60,
+      "ms": 59,
       "result": {
         "active_layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b",
         "active_layer_name": "Head",
@@ -779,7 +779,7 @@
         "layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b"
       },
       "ok": true,
-      "ms": 59,
+      "ms": 56,
       "result": {
         "layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b",
         "set": true,
@@ -797,7 +797,7 @@
         "visible": false
       },
       "ok": true,
-      "ms": 81,
+      "ms": 69,
       "result": {
         "layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b",
         "visible": false,
@@ -810,11 +810,11 @@
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/04_layer_hidden.png"
       },
       "ok": true,
-      "ms": 627,
+      "ms": 164,
       "result": {
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/04_layer_hidden.png",
         "exists": true,
-        "size_bytes": 2207925,
+        "size_bytes": 229774,
         "render_started": true,
         "method": "RenderToFile.take_image"
       }
@@ -826,7 +826,7 @@
         "visible": true
       },
       "ok": true,
-      "ms": 75,
+      "ms": 69,
       "result": {
         "layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b",
         "visible": true,
@@ -840,7 +840,7 @@
         "locked": true
       },
       "ok": true,
-      "ms": 81,
+      "ms": 75,
       "result": {
         "layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b",
         "locked": true,
@@ -854,7 +854,7 @@
         "locked": false
       },
       "ok": true,
-      "ms": 79,
+      "ms": 65,
       "result": {
         "layer_id": "f65688f0-d327-4f14-939a-dda6e24df94b",
         "locked": false,
@@ -867,22 +867,22 @@
         "name": "proof_layer"
       },
       "ok": true,
-      "ms": 71,
+      "ms": 101,
       "result": {
         "name": "proof_layer",
-        "layer_id": "4589f41e-d2c0-422b-9e05-ba182fdf07b3",
+        "layer_id": "f8e3e419-ab37-48e9-b43e-ac54d7abebea",
         "created": true
       }
     },
     {
       "tool": "delete_layer",
       "args": {
-        "layer_id": "4589f41e-d2c0-422b-9e05-ba182fdf07b3"
+        "layer_id": "f8e3e419-ab37-48e9-b43e-ac54d7abebea"
       },
       "ok": true,
-      "ms": 123,
+      "ms": 79,
       "result": {
-        "layer_id": "4589f41e-d2c0-422b-9e05-ba182fdf07b3",
+        "layer_id": "f8e3e419-ab37-48e9-b43e-ac54d7abebea",
         "deleted": true,
         "method": "delete_layer"
       }
@@ -893,7 +893,7 @@
         "action_id": "Scene.Undo"
       },
       "ok": true,
-      "ms": 80,
+      "ms": 93,
       "result": {
         "action_id": "Scene.Undo",
         "invoked": true
@@ -903,7 +903,7 @@
       "tool": "run_autoposing",
       "args": {},
       "ok": true,
-      "ms": 67,
+      "ms": 57,
       "result": {
         "invoked": "AutoPosingTool.AutoPosing"
       }
@@ -914,11 +914,11 @@
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/05_autopose.png"
       },
       "ok": true,
-      "ms": 160,
+      "ms": 158,
       "result": {
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/05_autopose.png",
         "exists": true,
-        "size_bytes": 311814,
+        "size_bytes": 237978,
         "render_started": true,
         "method": "RenderToFile.take_image"
       }
@@ -929,7 +929,7 @@
         "timeout_sec": 20.0
       },
       "ok": true,
-      "ms": 565,
+      "ms": 660,
       "result": {
         "invoked": "AutoPhysicsTool.Snap to Auto Physics",
         "converged": true
@@ -941,12 +941,12 @@
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/artifacts/cascy-proof.casc"
       },
       "ok": true,
-      "ms": 180,
+      "ms": 1282,
       "result": {
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/artifacts/cascy-proof.casc",
         "method": "view.Scene.save",
         "exists": true,
-        "size_bytes": 4076908,
+        "size_bytes": 4077167,
         "saved": true,
         "save_pending": false
       }
@@ -957,7 +957,7 @@
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/artifacts/cascy.fbx"
       },
       "ok": true,
-      "ms": 160,
+      "ms": 279,
       "result": {
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/artifacts/cascy.fbx",
         "exists": true,
@@ -974,7 +974,7 @@
       "tool": "new_scene",
       "args": {},
       "ok": true,
-      "ms": 1307,
+      "ms": 2177,
       "result": {
         "created": true,
         "method": "SceneManager.create_application_scene"
@@ -987,7 +987,7 @@
         "target": "scene"
       },
       "ok": true,
-      "ms": 265,
+      "ms": 1546,
       "result": {
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/artifacts/cascy.fbx",
         "target": "scene",
@@ -998,14 +998,14 @@
       "tool": "get_scene_info",
       "args": {},
       "ok": true,
-      "ms": 68,
+      "ms": 56,
       "result": {
         "has_scene": true,
         "current_frame": 0,
         "object_count": 67,
         "layer_count": 1,
         "selection_count": 0,
-        "scene_name": "untitled (2).casc"
+        "scene_name": "untitled.casc"
       }
     },
     {
@@ -1014,11 +1014,11 @@
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/06_imported_fbx.png"
       },
       "ok": true,
-      "ms": 169,
+      "ms": 158,
       "result": {
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/06_imported_fbx.png",
         "exists": true,
-        "size_bytes": 320018,
+        "size_bytes": 237978,
         "render_started": true,
         "method": "RenderToFile.take_image"
       }
@@ -1029,7 +1029,7 @@
         "code": "1 + 1"
       },
       "ok": true,
-      "ms": 66,
+      "ms": 60,
       "result": {
         "ok": true,
         "value": "2",
@@ -1042,7 +1042,7 @@
         "code": "csc.__name__"
       },
       "ok": true,
-      "ms": 60,
+      "ms": 71,
       "result": {
         "repr": "'csc'"
       }
@@ -1051,7 +1051,7 @@
       "tool": "list_objects",
       "args": {},
       "ok": true,
-      "ms": 70,
+      "ms": 60,
       "result": {
         "objects": "<list len=67>",
         "count": 67
@@ -1065,7 +1065,7 @@
         ]
       },
       "ok": true,
-      "ms": 94,
+      "ms": 103,
       "result": {
         "requested": [
           "Cascy_mesh"
@@ -1080,7 +1080,7 @@
         "code": "import commands.copy_paste_objects.duplicate as dup\ndup.run(scene)"
       },
       "ok": true,
-      "ms": 75,
+      "ms": 118,
       "result": {
         "repr": "None"
       }
@@ -1089,7 +1089,7 @@
       "tool": "list_objects",
       "args": {},
       "ok": true,
-      "ms": 70,
+      "ms": 58,
       "result": {
         "objects": "<list len=68>",
         "count": 68
@@ -1098,14 +1098,14 @@
     {
       "tool": "screenshot_viewport",
       "args": {
-        "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/07_duplicate_workaround.png"
+        "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/07_duplicate_object.png"
       },
       "ok": true,
-      "ms": 162,
+      "ms": 158,
       "result": {
-        "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/07_duplicate_workaround.png",
+        "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/07_duplicate_object.png",
         "exists": true,
-        "size_bytes": 320018,
+        "size_bytes": 237978,
         "render_started": true,
         "method": "RenderToFile.take_image"
       }
@@ -1116,10 +1116,10 @@
         "object_name": "Cascy_mesh(0)"
       },
       "ok": true,
-      "ms": 280,
+      "ms": 92,
       "result": {
         "deleted": "Cascy_mesh(0)",
-        "obj_id": "af31b3d5-d878-4715-856f-b81a15fc8e88",
+        "obj_id": "005ef05f-6b42-4cef-a822-64a832b5a2ab",
         "method": "ModelEditor.delete_objects"
       }
     },
@@ -1127,7 +1127,7 @@
       "tool": "undo",
       "args": {},
       "ok": true,
-      "ms": 80,
+      "ms": 81,
       "result": {
         "invoked": "Scene.Undo"
       }
@@ -1137,9 +1137,32 @@
       "args": {
         "object_name": "Cascy_mesh"
       },
-      "ok": false,
-      "known_issue": true,
-      "error": "Error executing tool duplicate_object: RuntimeError: Cascadeur rejected 'cascadeur-mcp: duplicate object': the modify callback failed (traceback is in Cascadeur's event log)\n\nIn-app traceback:\nTraceback (most recent call last):\n  File \"<poppet_rt>\", line 92, in _dispatch_legacy\n  File \"<poppet_rt>\", line 1299, in _d_object_duplicate\n  File \"<poppet_rt>\", line 169, in _checked_modify\nRuntimeError: Cascadeur rejected 'cascadeur-mcp: duplicate object': the modify callback failed (traceback is in Cascadeur's event log)\n"
+      "ok": true,
+      "ms": 198,
+      "result": {
+        "source": "Cascy_mesh",
+        "source_id": "22699336-a5dd-48e2-a8f4-d4905c76c5fe",
+        "new_objects": [
+          {
+            "id": "3adfd96e-b219-41e9-98a6-ae5b5ce3e92c",
+            "name": "Cascy_mesh(1)"
+          }
+        ],
+        "method": "commands.copy_paste_objects.duplicate"
+      }
+    },
+    {
+      "tool": "delete_object",
+      "args": {
+        "object_name": "Cascy_mesh(1)"
+      },
+      "ok": true,
+      "ms": 103,
+      "result": {
+        "deleted": "Cascy_mesh(1)",
+        "obj_id": "3adfd96e-b219-41e9-98a6-ae5b5ce3e92c",
+        "method": "ModelEditor.delete_objects"
+      }
     },
     {
       "tool": "screenshot_viewport",
@@ -1147,11 +1170,11 @@
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/08_final_viewport.png"
       },
       "ok": true,
-      "ms": 170,
+      "ms": 165,
       "result": {
         "path": "C:/Users/sandv/Desktop/poppet/docs/proof/screenshots/08_final_viewport.png",
         "exists": true,
-        "size_bytes": 287202,
+        "size_bytes": 213366,
         "render_started": true,
         "method": "RenderToFile.take_image"
       }
@@ -1160,7 +1183,7 @@
       "tool": "new_scene",
       "args": {},
       "ok": true,
-      "ms": 1421,
+      "ms": 2911,
       "result": {
         "created": true,
         "method": "SceneManager.create_application_scene"
@@ -1216,6 +1239,6 @@
     "undo"
   ],
   "tools_missing": [],
-  "passed_calls": 61,
-  "known_issues": 1
+  "passed_calls": 63,
+  "known_issues": 0
 }

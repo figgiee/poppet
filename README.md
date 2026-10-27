@@ -81,6 +81,21 @@ queue drain. This is a workaround for a 2026.2.3 limitation, contained in one
 paste-once file; when Nekki fixes the idle loop, the built-in menu command alone will
 suffice. Details: [docs/architecture.md](docs/architecture.md).
 
+### Zero-touch option: the Cascadeur-side add-on
+
+Nothing is wrong with a Cascadeur-side add-on — it is just not required. If you
+prefer no per-session paste, install the optional **autostart** package:
+
+```bash
+uvx cascadeur-autostart --install
+```
+
+It writes a ~3-file `user_scripts/poppet_autostart` event package (plus one entry in
+Cascadeur's `Python.Events`, backed up first) that starts the script server and keeper
+whenever Cascadeur launches. Restart Cascadeur once after installing; after that no
+console step is needed. Remove it with `uvx cascadeur-autostart --uninstall`.
+The core integration stays install-free — the add-on is purely optional convenience.
+
 ## Architecture
 
 ```
@@ -183,7 +198,7 @@ issue** = does not work on 2026.2.3 yet. Full results:
 | Tools | Status |
 |---|---|
 | `delete_object(name)` | expected |
-| `duplicate_object(name)` | **known issue** — the 2026.2 clipboard paste path fails its modify callback; returns a clear error instead of a false success |
+| `duplicate_object(name)` | live — Cascadeur's bundled duplicate command (two dispatches); geometry objects only, joints return a clear error |
 | `undo()` / `redo()` | live — `Scene.Undo` / `Scene.Redo` |
 | `screenshot_viewport(path?, wait_sec=10)` | live — asynchronous render, client waits for the PNG (2.2 MB for Cascy) |
 
@@ -204,26 +219,31 @@ Resource: `csc://schema` — live JSON of the connected Cascadeur's `csc.*` API 
 The 1.0 release was verified against a running Cascadeur 2026.2.3 with the Cascy
 sample scene:
 
-- `scripts/live_verify.py` — **43/44** end-to-end tool steps passed (the failure is
-  the documented `duplicate_object` issue); read + mutation + export + screenshot all
-  exercised. Report: [docs/verification/live-verify.json](docs/verification/live-verify.json).
+- `scripts/live_verify.py` — **45/45** end-to-end tool steps passed; read + mutation
+  (including `duplicate_object`), export and screenshot all exercised. Report:
+  [docs/verification/live-verify.json](docs/verification/live-verify.json).
 - `scripts/live_e2e_mcp.py` — full **MCP stdio → cascadeur-mcp → Cascadeur** path: 45
   tools registered, status/scene/layers/frame/`run_script`/`execute_csc_code` passed.
   Transcript: [docs/verification/live-e2e-mcp.txt](docs/verification/live-e2e-mcp.txt).
-- `python -m pytest tests` — 210 passed, 1 skipped; protocol tests run Cascadeur's
+- `python -m pytest tests` — 219 passed, 1 skipped; protocol tests run Cascadeur's
   *shipped* `script_server.py` offline with fake `csc`/`events`.
+- **Optional add-on zero-touch:** installed `cascadeur-autostart`, relaunched
+  Cascadeur cold with no console/menu action, and the server came up
+  (`[cascadeur-mcp] autostart: script server ready` in the Event Log) with a working
+  `ping`.
+- **Independent validation:** current public implementations were re-cloned and
+  re-inspected at their HEADs (commits in the report):
+  [docs/research/independent-validation.md](docs/research/independent-validation.md).
 - **Full capability proof:** every one of the 45 tools called through the real MCP
-  stdio server, with viewport screenshots of the visible effects, plus the FBX/.casc
-  artifacts written and re-imported during the run: [docs/proof/](docs/proof/README.md).
+  stdio server (**63/63 calls passed**, including `duplicate_object`), with viewport
+  screenshots of the visible effects, plus the FBX/.casc artifacts written and
+  re-imported during the run: [docs/proof/](docs/proof/README.md).
 
 ## Known limitations
 
 - **One console paste per Cascadeur launch** (see *Why a bootstrap at all?*).
 - **~30 s per tool call** — Cascadeur's script server caps a request. Long solves or
   exports may need splitting or a retry; timeouts are not proof the operation failed.
-- **`duplicate_object`** fails on 2026.2.3 (clipboard paste callback). Use
-  `execute_csc_code` with Cascadeur's own `commands/copy_paste_objects/duplicate.py`
-  until it is fixed.
 - **AutoPhysics / FBX import** were not re-verified live in 1.0.
 
 ## Migrating from 0.6 (file queue) to 1.0
@@ -257,5 +277,6 @@ their own Cascadeur-side bridges).
 [docs/architecture.md](docs/architecture.md) ·
 [docs/mcp_client_configs.md](docs/mcp_client_configs.md) ·
 [docs/publishing.md](docs/publishing.md) ·
-[docs/research/](docs/research/README.md). License: MIT — see [LICENSE](LICENSE).
+[docs/research/](docs/research/README.md) ·
+[independent validation](docs/research/independent-validation.md). License: MIT — see [LICENSE](LICENSE).
 cascadeur-mcp is independent of Nekki; Cascadeur is a trademark of Nekki Limited.

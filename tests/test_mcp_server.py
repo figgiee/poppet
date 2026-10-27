@@ -190,7 +190,6 @@ def test_screenshot_viewport_forwards_path(stub_conn):
         ("get_object_hierarchy", "object_hierarchy", {}),
         ("list_object_attributes", "object_attributes_list", {"object_name": "pelvis_Box"}),
         ("set_layer_locked", "layer_locked_set", {"layer_id": "abc", "locked": True}),
-        ("duplicate_object", "object_duplicate", {"object_name": "pelvis_Box"}),
         # v0.3-style adds in same release
         ("undo", "undo", {}),
         ("redo", "redo", {}),
@@ -222,6 +221,20 @@ def test_simple_pass_through_tools(stub_conn, tool_attr, command, kwargs):
 # ---------------------------------------------------------------------------
 # 1.0 additions: diagnostics + raw script escape hatch
 # ---------------------------------------------------------------------------
+
+
+def test_duplicate_object_uses_two_dispatches(stub_conn):
+    stub, srv = stub_conn
+    stub.request.side_effect = [
+        {"source": "pelvis", "stage": "selected"},
+        {"new_objects": [{"id": "x", "name": "pelvis(0)"}]},
+    ]
+    out = srv.duplicate_object("pelvis")
+    assert [call.args[0] for call in stub.request.call_args_list] == [
+        "object_duplicate",
+        "object_duplicate_finish",
+    ]
+    assert out["new_objects"][0]["name"] == "pelvis(0)"
 
 
 def test_run_script_forwards_raw_code(stub_conn):

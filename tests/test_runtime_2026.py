@@ -160,20 +160,65 @@ def test_object_delete_uses_set_and_scene_updater():
     assert out["method"] == "ModelEditor.delete_objects"
 
 
-def test_object_duplicate_uses_scene_clipboard(csc_mock, fake_scene):
+def _install_fake_duplicate_command(monkeypatch, objects, creates=("oid-2",)):
+    import sys
+    import types
+
+    def fake_run(_scene):
+        objects.extend(creates)
+
+    command = types.ModuleType("commands.copy_paste_objects.duplicate")
+    command.run = fake_run
+    package = types.ModuleType("commands")
+    copy_paste = types.ModuleType("commands.copy_paste_objects")
+    package.copy_paste_objects = copy_paste
+    copy_paste.duplicate = command
+    for name, module in (
+        ("commands", package),
+        ("commands.copy_paste_objects", copy_paste),
+        ("commands.copy_paste_objects.duplicate", command),
+    ):
+        monkeypatch.setitem(sys.modules, name, module)
+
+
+def test_object_duplicate_prepare_selects_source(csc_mock, fake_scene):
     scene = _scene_with_objects("oid-1")
-    app = csc_mock.app.get_application.return_value
-    view_scene = app.current_scene.return_value
-    clipboard = app.get_scene_clipboard.return_value
-    session = MagicMock(name="session")
     scene.modify_update_with_session.side_effect = lambda label, mod: mod(
-        MagicMock(), MagicMock(), MagicMock(), session
+        MagicMock(), MagicMock(), MagicMock(), MagicMock()
     )
     out = _dispatchers._d_object_duplicate({"object_name": "name-oid-1"}, scene)
-    # csc.parts.SceneClipboard.copy / paste_with_session
-    clipboard.copy.assert_called_once_with(view_scene)
-    clipboard.paste_with_session.assert_called_once_with(view_scene, session)
-    assert out["method"] == "SceneClipboard.paste_with_session"
+    assert out["stage"] == "selected"
+    assert out["source_id"] == "oid-1"
+
+
+def test_object_duplicate_finish_runs_bundled_command(csc_mock, fake_scene, monkeypatch):
+    scene = _scene_with_objects("oid-1")
+    mv = scene.model_viewer.return_value
+    objects = ["oid-1"]
+    mv.get_objects.side_effect = lambda: list(objects)
+    _install_fake_duplicate_command(monkeypatch, objects)
+    scene.modify_update_with_session.side_effect = lambda label, mod: mod(
+        MagicMock(), MagicMock(), MagicMock(), MagicMock()
+    )
+    _dispatchers._d_object_duplicate({"object_name": "name-oid-1"}, scene)
+    out = _dispatchers._d_object_duplicate_finish({"object_name": "name-oid-1"}, scene)
+    assert out["method"] == "commands.copy_paste_objects.duplicate"
+    assert out["new_objects"] == [{"id": "oid-2", "name": "name-oid-2"}]
+
+
+def test_object_duplicate_finish_raises_when_command_creates_nothing(
+    csc_mock, fake_scene, monkeypatch
+):
+    scene = _scene_with_objects("oid-1")
+    objects = ["oid-1"]
+    scene.model_viewer.return_value.get_objects.side_effect = lambda: list(objects)
+    _install_fake_duplicate_command(monkeypatch, objects, creates=())
+    scene.modify_update_with_session.side_effect = lambda label, mod: mod(
+        MagicMock(), MagicMock(), MagicMock(), MagicMock()
+    )
+    _dispatchers._d_object_duplicate({"object_name": "name-oid-1"}, scene)
+    with pytest.raises(RuntimeError, match="did not create"):
+        _dispatchers._d_object_duplicate_finish({"object_name": "name-oid-1"}, scene)
 
 
 # ---------------------------------------------------------------------------

@@ -15,16 +15,16 @@ visible result of the interesting steps with `screenshot_viewport` into
 ## Tool coverage
 
 All **45 registered tools** were called through MCP
-(45 unique tools; 61/62
-calls returned success). The only failure is the documented `duplicate_object`
-2026.2.3 limitation; the bundled-command workaround is demonstrated in screenshot 07.
+(45 unique tools; 63/63
+calls returned success). `duplicate_object` is exercised through Cascadeur's bundled
+duplicate command (see screenshot 07).
 
 | Tool | Status | Detail |
 |---|---|---|
 | `get_script_server_status` | pass ×1 | {'connected': True, 'url': 'http://127.0.0.1:8766', 'expected_runtime_version': '1.0.0', 'server_version': '0.3.1', 'queued': 0, 'pong': True, 'runtim |
 | `csc://schema` | pass ×1 | 106448 bytes |
 | `load_scene` | pass ×1 | {'path': 'C:/Users/sandv/AppData/Local/Cascadeur/samples/Cascy.casc', 'loaded': True, 'method': 'DataSourceManager.load_scene'} |
-| `get_scene_info` | pass ×2 | {'has_scene': True, 'current_frame': 0, 'object_count': 67, 'layer_count': 1, 'selection_count': 0, 'scene_name': 'untitled (2).casc'} |
+| `get_scene_info` | pass ×2 | {'has_scene': True, 'current_frame': 0, 'object_count': 67, 'layer_count': 1, 'selection_count': 0, 'scene_name': 'untitled.casc'} |
 | `get_current_frame` | pass ×1 | {'current_frame': 0} |
 | `list_objects` | pass ×3 | {'objects': '<list len=68>', 'count': 68} |
 | `get_object_hierarchy` | pass ×1 | {'objects': '<list len=289>', 'count': 289} |
@@ -36,7 +36,7 @@ calls returned success). The only failure is the documented `duplicate_object`
 | `selection_filter` | pass ×1 | {'pattern': 'pelvis', 'mode': 'contains', 'matched_count': 11, 'matched_names': ['pelvis', 'pelvis_Box', 'pelvis_MainPoint', 'pelvis_AdditionalPoint', |
 | `clear_selection` | pass ×1 | {'cleared': True} |
 | `get_object_transform` | pass ×1 | {'object': 'pelvis', 'frame': 0, 'position': [0.0009238154743798077, 95.63358306884766, -5.191793918609619], 'rotation': [4.160368916927837e-06, -0.99 |
-| `list_object_attributes` | pass ×1 | {'object': 'pelvis', 'attributes': [{'name': 'pelvis.Use custom color'}, {'name': 'pelvis.Export Rotate Animation'}, {'name': 'pelvis.Is Exported'}, { |
+| `list_object_attributes` | pass ×1 | {'object': 'pelvis', 'attributes': [{'name': 'pelvis.Export Rotate Animation'}, {'name': 'pelvis.Actual'}, {'name': 'pelvis.In'}, {'name': 'pelvis.Out |
 | `read_telemetry` | pass ×1 | {'telemetry': {'pelvis': {'0': {'position': [0.0009238154743798077, 95.63358306884766, -5.191793918609619], 'rotation': [4.160368916927837e-06, -0.999 |
 | `read_telemetry_range` | pass ×1 | {'telemetry': '<dict len=2>', 'frames': [0, 1, 2, 3, 4, 5], 'missing': [], 'node_names': ['Local Position', 'Local Rotation']} |
 | `set_current_frame` | pass ×1 | {'requested': 10, 'current_frame': 0} |
@@ -53,19 +53,19 @@ calls returned success). The only failure is the documented `duplicate_object`
 | `set_active_layer` | pass ×1 | {'layer_id': 'f65688f0-d327-4f14-939a-dda6e24df94b', 'set': True, 'frame_range': [0, 10], 'semantics': 'timeline-layer-selection'} |
 | `set_layer_visible` | pass ×2 | {'layer_id': 'f65688f0-d327-4f14-939a-dda6e24df94b', 'visible': True, 'method': 'set_visible_for_layer'} |
 | `set_layer_locked` | pass ×2 | {'layer_id': 'f65688f0-d327-4f14-939a-dda6e24df94b', 'locked': False, 'method': 'set_locked_for_layer'} |
-| `add_layer` | pass ×1 | {'name': 'proof_layer', 'layer_id': '4589f41e-d2c0-422b-9e05-ba182fdf07b3', 'created': True} |
-| `delete_layer` | pass ×1 | {'layer_id': '4589f41e-d2c0-422b-9e05-ba182fdf07b3', 'deleted': True, 'method': 'delete_layer'} |
+| `add_layer` | pass ×1 | {'name': 'proof_layer', 'layer_id': 'f8e3e419-ab37-48e9-b43e-ac54d7abebea', 'created': True} |
+| `delete_layer` | pass ×1 | {'layer_id': 'f8e3e419-ab37-48e9-b43e-ac54d7abebea', 'deleted': True, 'method': 'delete_layer'} |
 | `call_action` | pass ×1 | {'action_id': 'Scene.Undo', 'invoked': True} |
 | `run_autoposing` | pass ×1 | {'invoked': 'AutoPosingTool.AutoPosing'} |
 | `run_autophysics` | pass ×1 | {'invoked': 'AutoPhysicsTool.Snap to Auto Physics', 'converged': True} |
-| `save_scene` | pass ×1 | {'path': 'C:/Users/sandv/Desktop/poppet/docs/proof/artifacts/cascy-proof.casc', 'method': 'view.Scene.save', 'exists': True, 'size_bytes': 4076908, 's |
+| `save_scene` | pass ×1 | {'path': 'C:/Users/sandv/Desktop/poppet/docs/proof/artifacts/cascy-proof.casc', 'method': 'view.Scene.save', 'exists': True, 'size_bytes': 4077167, 's |
 | `export_fbx` | pass ×1 | {'path': 'C:/Users/sandv/Desktop/poppet/docs/proof/artifacts/cascy.fbx', 'exists': True, 'size_bytes': 3106976, 'settings': {'mode': 'Binary', 'up_axi |
 | `new_scene` | pass ×2 | {'created': True, 'method': 'SceneManager.create_application_scene'} |
 | `import_fbx` | pass ×1 | {'path': 'C:/Users/sandv/Desktop/poppet/docs/proof/artifacts/cascy.fbx', 'target': 'scene', 'imported': True} |
 | `run_script` | pass ×1 | {'ok': True, 'value': '2', 'messages': []} |
 | `execute_csc_code` | pass ×2 | {'repr': 'None'} |
-| `delete_object` | pass ×1 | {'deleted': 'Cascy_mesh(0)', 'obj_id': 'af31b3d5-d878-4715-856f-b81a15fc8e88', 'method': 'ModelEditor.delete_objects'} |
-| `duplicate_object` | known issue ×1 | Error executing tool duplicate_object: RuntimeError: Cascadeur rejected 'cascadeur-mcp: duplicate object': the modify callback failed (traceback is in |
+| `delete_object` | pass ×2 | {'deleted': 'Cascy_mesh(1)', 'obj_id': '3adfd96e-b219-41e9-98a6-ae5b5ce3e92c', 'method': 'ModelEditor.delete_objects'} |
+| `duplicate_object` | pass ×1 | {'source': 'Cascy_mesh', 'source_id': '22699336-a5dd-48e2-a8f4-d4905c76c5fe', 'new_objects': [{'id': '3adfd96e-b219-41e9-98a6-ae5b5ce3e92c', 'name': ' |
 
 ## Screenshots
 
@@ -99,12 +99,12 @@ calls returned success). The only failure is the documented `duplicate_object`
 ![06_imported_fbx.png](screenshots/06_imported_fbx.png)
 *2155629 bytes, 1920x1080 — `new_scene` + `import_fbx(target=scene)` re-imported the exported Cascy FBX (67 objects).*
 
-### 07 duplicate workaround
+### 07 duplicate object
 
-![07_duplicate_workaround.png](screenshots/07_duplicate_workaround.png)
-*2160542 bytes, 1920x1080 — documented `duplicate_object` workaround: the bundled duplicate command via `execute_csc_code` created Cascy_mesh(0), shown selected.*
+![07_duplicate_object.png](screenshots/07_duplicate_object.png)
+*2160542 bytes, 1920x1080 — `duplicate_object` created a duplicate through Cascadeur's bundled duplicate command; the new object is shown selected.*
 
 ### 08 final viewport
 
 ![08_final_viewport.png](screenshots/08_final_viewport.png)
-*2160287 bytes, 1920x1080 — final state after delete/undo/cleanup.*
+*2160490 bytes, 1920x1080 — final state after delete/undo/cleanup.*

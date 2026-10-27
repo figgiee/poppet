@@ -77,6 +77,18 @@ def _mutations(connection: CascadeurConnection, names: list[str], layer_ids: lis
         return
     controller = names[0]
     layer = layer_ids[0] if layer_ids else None
+    # Cascadeur's bundled duplicate command works on geometry objects; joint-only
+    # objects are rejected by the command (the tool reports a clean error there).
+    all_names = names
+    try:
+        objects = connection.request("objects_list", {}) or {}
+        all_names = [obj["name"] for obj in objects.get("objects", [])]
+    except Exception:
+        pass
+    duplicate_target = next(
+        (name for name in all_names if name.endswith("_Box") or "_mesh" in name.lower()),
+        controller,
+    )
 
     step(
         connection,
@@ -120,12 +132,35 @@ def _mutations(connection: CascadeurConnection, names: list[str], layer_ids: lis
             {"layer_id": new_layer["layer_id"]},
         )
 
+    # duplicate_object is a two-dispatch operation: select first, then run the
+    # bundled command (2026.2.3 needs the selection to commit in a prior dispatch).
+    step(
+        connection,
+        "duplicate_object_select",
+        "object_duplicate",
+        {"object_name": duplicate_target},
+    )
     duplicate = step(
-        connection, "duplicate_object", "object_duplicate", {"object_name": controller}
+        connection,
+        "duplicate_object",
+        "object_duplicate_finish",
+        {"object_name": duplicate_target},
     )
     added = []
     if isinstance(duplicate, dict):
         added = duplicate.get("new_objects") or duplicate.get("created") or []
+    if not added:
+        RESULTS.append(
+            {
+                "step": "duplicate_object_created",
+                "command": "object_duplicate_finish",
+                "params": {"object_name": controller},
+                "ok": False,
+                "ms": 0,
+                "error": "duplicate command created no objects",
+            }
+        )
+        print("FAIL duplicate_object_created")
     for created in added[:3]:
         name = created.get("name") if isinstance(created, dict) else created
         if name:

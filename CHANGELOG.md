@@ -35,6 +35,16 @@ Cascadeur as source text on the first tool call.
 
 ### Added
 
+- `cascadeur-autostart` (optional): installs a small `user_scripts/poppet_autostart`
+  event package that starts the script server + keeper at Cascadeur launch — true
+  zero-touch (no console paste), verified on a cold 2026.2.3 launch. Uninstall with
+  `cascadeur-autostart --uninstall`; the core integration stays install-free.
+- `duplicate_object` now uses Cascadeur's bundled duplicate command (two dispatches:
+  select, then duplicate), fixing the 2026.2.3 clipboard-paste failure for geometry
+  objects.
+- Independent validation: public implementations re-cloned at their current HEADs and
+  compared (`docs/research/independent-validation.md`).
+
 - `cascadeur-bootstrap` — writes cascadeur-mcp's Cascadeur-side bootstrap and prints the
   one-line Python Console command. The bootstrap starts Cascadeur's built-in script
   server on a free port and installs a 10 ms PySide keeper timer that keeps the

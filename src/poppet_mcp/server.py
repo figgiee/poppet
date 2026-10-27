@@ -494,8 +494,13 @@ def delete_object(object_name: str) -> dict:
 
 @mcp.tool()
 def duplicate_object(object_name: str) -> dict:
-    """Duplicate an object and return the newly created object names."""
-    return _call("object_duplicate", object_name=object_name)
+    """Duplicate an object and return the newly created object names.
+
+    Two dispatches: 2026.2.3's bundled duplicate command needs the selection made in a
+    previous scene update, so the tool selects first and then runs the command.
+    """
+    _call("object_duplicate", object_name=object_name)
+    return _call("object_duplicate_finish", object_name=object_name)
 
 
 # ----------------------------------------------------------------------------

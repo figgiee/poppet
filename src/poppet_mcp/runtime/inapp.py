@@ -1211,18 +1211,41 @@ def _d_object_delete(params, scene):
     }
 
 
-def _d_object_duplicate(params, scene):
-    """Duplicate an object through the scene clipboard (2026.2 dialog-free path).
+_PENDING_DUPLICATE: dict[str, list] = {}
 
-    Mirrors Cascadeur 2026.2's bundled ``commands/copy_paste_objects/duplicate.py``.
-    Verified stubs:
-      * csc.app.Application.get_scene_clipboard() -> csc.parts.SceneClipboard
-      * csc.parts.SceneClipboard.copy(csc.view.Scene)
-      * csc.parts.SceneClipboard.paste_with_session(csc.view.Scene, csc.domain.Session)
-      * csc.model.BehaviourEditor.set_behaviour_model_object(BehaviourId, str, ObjectId)
-      * csc.model.ModelEditor.move_obj_ids_in_layers(list[ObjectId], csc.Guid)
-    The action-ID fallbacks (Scene.Edit.Duplicate et al.) never existed.
+
+def _d_object_duplicate(params, scene):
+    """Stage 1 of duplicate: select the source object.
+
+    Cascadeur's bundled ``commands/copy_paste_objects/duplicate.py`` operates on the
+    current selection, and on 2026.2.3 a selection made in the same dispatch is not
+    visible to the command yet. The MCP tool therefore issues this dispatch first and
+    runs the command in the paired ``object_duplicate_finish`` dispatch — the same
+    two-step sequence that was live-verified as the workaround.
     """
+    name = params.get("object_name")
+    if not name:
+        raise ValueError("'object_name' is required")
+    obj_id = _find_obj_by_name(scene, name)
+    if obj_id is None:
+        raise ValueError(f"object not found: {name!r}")
+
+    previous_ids = []
+    try:
+        previous_ids = _selected_obj_ids(scene)
+    except Exception:
+        previous_ids = []
+    _PENDING_DUPLICATE[name] = previous_ids
+
+    def mod(model, update, sc, session):
+        session.take_selector().select({obj_id}, obj_id)
+
+    _checked_modify(scene, "cascadeur-mcp: select for duplicate", mod, session=True)
+    return {"source": name, "source_id": _id_str(obj_id), "stage": "selected"}
+
+
+def _d_object_duplicate_finish(params, scene):
+    """Stage 2 of duplicate: run Cascadeur's bundled duplicate command."""
     import csc
 
     name = params.get("object_name")
@@ -1232,27 +1255,14 @@ def _d_object_duplicate(params, scene):
     if obj_id is None:
         raise ValueError(f"object not found: {name!r}")
 
-    # The bundled duplicate command operates on the current selection; select the
-    # source object first (and restore the old selection afterwards).
-    previous_ids = []
-    try:
-        previous_ids = _selected_obj_ids(scene)
-    except Exception:
-        previous_ids = []
-
-    def _select_for_duplicate(model, update, sc, session):
-        session.take_selector().select({obj_id}, obj_id)
-
-    _checked_modify(
-        scene, "cascadeur-mcp: select for duplicate", _select_for_duplicate, session=True
-    )
-
-    app = csc.app.get_application()
-    view_scene = app.current_scene()  # csc.app.Application.current_scene()
-    clipboard = app.get_scene_clipboard()  # csc.app.Application.get_scene_clipboard()
+    previous_ids = _PENDING_DUPLICATE.pop(name, [])
     mv = scene.model_viewer()
-    bv = mv.behaviour_viewer()
-    lv = scene.layers_viewer()
+
+    selected_count = 0
+    try:
+        selected_count = len(_selected_obj_ids(scene))
+    except Exception:
+        pass
 
     before_ids = set()
     try:
@@ -1260,45 +1270,26 @@ def _d_object_duplicate(params, scene):
     except Exception:
         pass
 
-    original_layer = None
     try:
-        original_layer = lv.layer_id_by_obj_id(obj_id)
-    except Exception:
-        pass
+        import commands.copy_paste_objects.duplicate as duplicate_command
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"could not import Cascadeur's bundled duplicate command: {exc}"
+        ) from exc
 
-    original_parent = None
-    try:
-        basic = bv.get_behaviour_by_name(obj_id, "Basic")
-        original_parent = bv.get_behaviour_object(basic, "parent")
-    except Exception:
-        pass
+    duplicate_command.run(scene)
 
     created_ids = []
-    clipboard.copy(view_scene)
+    try:
+        created_ids = [oid for oid in mv.get_objects() if oid not in before_ids]
+    except Exception:
+        pass
+    if not created_ids:
+        raise RuntimeError(
+            "Cascadeur's duplicate command did not create an object "
+            f"(selection_count_in_finish={selected_count})"
+        )
 
-    def mod(model, update, scene_updater, session):
-        clipboard.paste_with_session(view_scene, session)
-        for oid in mv.get_objects():
-            if oid in before_ids:
-                continue
-            created_ids.append(oid)
-            try:
-                if original_parent is not None and not original_parent.is_null():
-                    child_basic = bv.get_behaviour_by_name(oid, "Basic")
-                    model.behaviour_editor().set_behaviour_model_object(
-                        child_basic, "parent", original_parent
-                    )
-            except Exception:
-                pass
-            try:
-                if original_layer is not None:
-                    model.move_obj_ids_in_layers([oid], original_layer)
-            except Exception:
-                pass
-
-    _checked_modify(scene, "cascadeur-mcp: duplicate object", mod, session=True, update=True)
-
-    # Restore the selection the user had before the duplicate.
     try:
 
         def _restore_selection(model, update, sc, session):
@@ -1319,7 +1310,7 @@ def _d_object_duplicate(params, scene):
         "source": name,
         "source_id": _id_str(obj_id),
         "new_objects": new_objects,
-        "method": "SceneClipboard.paste_with_session",
+        "method": "commands.copy_paste_objects.duplicate",
     }
 
 
@@ -2033,6 +2024,7 @@ _HANDLERS = {
     # New in v0.2 — object edit
     "object_delete": _d_object_delete,
     "object_duplicate": _d_object_duplicate,
+    "object_duplicate_finish": _d_object_duplicate_finish,
     # New in v0.2 — viewport
     "viewport_screenshot": _d_viewport_screenshot,
     # New in v0.3 — layer create/delete + undo/redo + range bake

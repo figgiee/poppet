@@ -114,9 +114,10 @@ should run in the `scene_idle` context. Prompts only see typed tool arguments.
   caller-supplied Python by definition. Everything else is a fixed handler with a
   fixed parameter schema; the runtime dispatches only known command names and returns
   a structured error otherwise.
-- **No persistent Cascadeur-side state.** Nothing is written to `user_scripts/` or
-  `settings.json`; the only in-app artefact is `poppet_rt` in Python memory, gone on
-  restart.
+- **No persistent Cascadeur-side state by default.** The core flow writes nothing to
+  `user_scripts/` or `settings.json`; the only in-app artefact is `poppet_rt` in Python
+  memory, gone on restart. The optional `cascadeur-autostart` add-on is the single
+  opt-in exception (a 3-file event package + one `Python.Events` entry, uninstallable).
 - **Undo.** Mutations go through `scene.modify*`, so they appear as normal Cascadeur
   undo steps; `undo()`/`redo()` wrap the menu actions.
 
@@ -154,6 +155,17 @@ launch) fixes both halves from inside the app:
 The timer lives in Cascadeur's Python memory only; nothing is written into
 `user_scripts/`. The chosen port goes to `%LOCALAPPDATA%\cascadeur-mcp\server.json`, which
 the client reads when `POPPET_URL` is unset.
+
+**Optional add-on — zero-touch autostart.** `cascadeur-autostart --install` writes a
+small `user_scripts/poppet_autostart` event package (handlers on `scene_created`,
+`scene_opened`, `scene_activated`, plus a harmless `application_started` handler for
+future builds) and adds one entry to `settings.json` `Python.Events` after writing a
+backup. Each handler executes the same bootstrap file and returns early when the
+server is already running, so the several scene events at launch start it exactly
+once. A cold-start probe on 2026.2.3 showed user handlers receive `scene_created` and
+`scene_activated` but never `application_started`; the retry handlers exist for that
+reason. This is convenience only: the default flow remains the one-line console
+paste, and the add-on can be removed again with `cascadeur-autostart --uninstall`.
 
 ### The ~30 s cap
 
