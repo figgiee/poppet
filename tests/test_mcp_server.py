@@ -38,16 +38,16 @@ def stub_conn(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_at_least_43_tools_registered():
-    """v0.5 ships 43 tools (40 from v0.4 + selection_extend/subtract +
-    read_telemetry_range). Future minors must NOT regress below 43.
+def test_at_least_45_tools_registered():
+    """1.0 ships 45 tools (the 0.6 catalog + get_script_server_status and
+    run_script). Future releases must not regress below 45.
     """
     import asyncio
 
     from poppet_mcp.server import mcp
 
     tools = asyncio.run(mcp.list_tools())
-    assert len(tools) >= 43, f"only {len(tools)} tools: {[t.name for t in tools]}"
+    assert len(tools) >= 45, f"only {len(tools)} tools: {[t.name for t in tools]}"
 
 
 def test_csc_schema_resource_registered():
@@ -190,7 +190,6 @@ def test_screenshot_viewport_forwards_path(stub_conn):
         ("get_object_hierarchy", "object_hierarchy", {}),
         ("list_object_attributes", "object_attributes_list", {"object_name": "pelvis_Box"}),
         ("set_layer_locked", "layer_locked_set", {"layer_id": "abc", "locked": True}),
-        ("duplicate_object", "object_duplicate", {"object_name": "pelvis_Box"}),
         # v0.3-style adds in same release
         ("undo", "undo", {}),
         ("redo", "redo", {}),
@@ -217,3 +216,69 @@ def test_simple_pass_through_tools(stub_conn, tool_attr, command, kwargs):
     args, _ = stub.request.call_args
     assert args[0] == command
     assert args[1] == kwargs
+
+
+# ---------------------------------------------------------------------------
+# 1.0 additions: diagnostics + raw script escape hatch
+# ---------------------------------------------------------------------------
+
+
+def test_duplicate_object_uses_two_dispatches(stub_conn):
+    stub, srv = stub_conn
+    stub.request.side_effect = [
+        {"source": "pelvis", "stage": "selected"},
+        {"new_objects": [{"id": "x", "name": "pelvis(0)"}]},
+    ]
+    out = srv.duplicate_object("pelvis")
+    assert [call.args[0] for call in stub.request.call_args_list] == [
+        "object_duplicate",
+        "object_duplicate_finish",
+    ]
+    assert out["new_objects"][0]["name"] == "pelvis(0)"
+
+
+def test_run_script_forwards_raw_code(stub_conn):
+    stub, srv = stub_conn
+    stub.run_script = MagicMock(return_value={"ok": True, "value": "2"})
+    assert srv.run_script("1 + 1")["value"] == "2"
+    stub.run_script.assert_called_once_with("1 + 1")
+
+
+def test_get_script_server_status_reports_link(stub_conn):
+    stub, srv = stub_conn
+    stub.health = MagicMock(return_value={"ok": True, "version": "0.3.1", "queued": 0})
+    stub.request = MagicMock(
+        return_value={"pong": True, "runtime_version": "1.0.0", "has_scene": True}
+    )
+    status = srv.get_script_server_status()
+    assert status["connected"] is True
+    assert status["server_version"] == "0.3.1"
+    assert status["runtime_version"] == "1.0.0"
+
+
+def test_get_script_server_status_reports_unreachable(monkeypatch):
+    from poppet_mcp import server as srv
+
+    class _Down:
+        url = "http://127.0.0.1:8765"
+
+        def health(self):
+            raise RuntimeError("not reachable: start the script server")
+
+        def request(self, *_a, **_k):  # pragma: no cover - must not be called
+            raise AssertionError("request() must not run when health fails")
+
+    monkeypatch.setattr(srv, "_connection", lambda: _Down())
+    status = srv.get_script_server_status()
+    assert status["connected"] is False
+    assert "start the script server" in status["error"]
+
+
+def test_tool_surface_includes_new_tools():
+    import asyncio
+
+    from poppet_mcp.server import mcp
+
+    names = {tool.name for tool in asyncio.run(mcp.list_tools())}
+    assert {"run_script", "get_script_server_status"} <= names
+    assert len(names) >= 45
