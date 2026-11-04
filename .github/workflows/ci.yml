@@ -22,34 +22,15 @@ jobs:
           python-version: "3.12"
 
       - name: Install ruff
-        # Pin to a specific minor for reproducible formatting — bump together
-        # with `ruff` in pyproject.toml dev extras when upgrading. Floating
-        # the version caused CI to install a different patch from local,
-        # which surfaced minor format-rule drift on every PR.
+        # Pin to a specific version for reproducible formatting — bump together
+        # with `ruff` in pyproject.toml dev extras when upgrading.
         run: pip install "ruff==0.15.14"
 
       - name: ruff check
-        run: ruff check src/ cascadeur_side/ tests/ scripts/
+        run: ruff check src/ tests/ scripts/
 
       - name: ruff format --check
-        run: ruff format --check src/ cascadeur_side/ tests/ scripts/
-
-  syntax-check:
-    name: cascadeur_side parses on Python 3.8
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # The Cascadeur 2025.3.x embedded interpreter is Python 3.8. Anything in
-      # cascadeur_side/ has to keep parsing there — verify by compiling under
-      # a real 3.8 interpreter on every push.
-      - name: Set up Python 3.8
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.8"
-
-      - name: py_compile cascadeur_side
-        run: python -m py_compile cascadeur_side/poppet/*.py
+        run: ruff format --check src/ tests/ scripts/
 
   tests:
     name: tests (${{ matrix.os }} / py${{ matrix.python-version }})
@@ -71,7 +52,6 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run pytest
-        if: hashFiles('tests/**/*.py') != ''
         run: pytest tests/ -v
 
   mcp-smoke:
@@ -93,8 +73,8 @@ jobs:
       - name: Install package
         run: pip install -e .
 
-      # Boots the poppet-mcp server over stdio, completes the MCP handshake,
-      # lists tools + resources, then exits. POPPET_LIVE stays unset so no real
-      # Cascadeur connection is attempted.
+      # Boots cascadeur-mcp over stdio, completes the MCP handshake, lists tools +
+      # resources, then exits. POPPET_LIVE stays unset, so no Cascadeur
+      # connection is attempted.
       - name: Smoke test MCP server
         run: python scripts/mcp_smoke_test.py

@@ -22,3 +22,23 @@ Thumbs.db
 .trees/
 tmp/
 _test_*.pkl
+
+# pytest tmp dir (redirected into the repo for sandbox compatibility)
+.pytest-tmp/
+.test-artifacts/
+.acl-reports/
+.build-check/
+
+# live-verification scratch artifacts
+.live-*\n.console-*\n.uia-*\n
+.probe-*
+.focus-*
+# bootstrap fallback dir (sandbox temp mapping)
+cascadeur-mcp/
+
+# local validation / Cascadeur-side research scratch
+.validation/
+.autostart-staging/
+.obsolete-user-scripts/
+.verify-shot.png
+.autostart-*.log

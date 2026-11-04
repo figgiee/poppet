@@ -10,7 +10,7 @@ labels: enhancement
 
 ## Proposed solution
 
-<!-- What should Poppet expose, and what should the MCP tool surface look like? -->
+<!-- What should cascadeur-mcp expose, and what should the MCP tool surface look like? -->
 
 ## Cascadeur API path
 

@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "poppet-mcp"
-version = "0.6.0"
-description = "Model Context Protocol server for Cascadeur — drive AutoPosing, AutoPhysics, keyframe authoring, scene I/O, and viewport capture from Claude."
+name = "cascadeur-mcp"
+version = "1.0.0"
+description = "Typed MCP tool layer for Cascadeur 2026.2+ — drives the built-in MCP script server with a shipped in-app runtime, so there is nothing to install inside Cascadeur."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Brandon Figarella" }]
-keywords = ["mcp", "cascadeur", "animation", "claude", "anthropic", "autoposing", "autophysics"]
+keywords = ["mcp", "cascadeur", "animation", "claude", "autoposing", "autophysics", "autodesk"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -20,7 +20,8 @@ classifiers = [
     "Topic :: Multimedia :: Graphics :: 3D Modeling",
 ]
 dependencies = [
-    "mcp>=1.0.0",
+    # MCP SDK 2.x renamed FastMCP to MCPServer; this server targets the 1.x API.
+    "mcp>=1.0.0,<2",
     "pydantic>=2.0.0",
 ]
 
@@ -32,38 +33,51 @@ dev = [
 ]
 
 [project.scripts]
+cascadeur-mcp = "poppet_mcp.server:main"
+cascadeur-bootstrap = "poppet_mcp.bootstrap_cli:main"
+cascadeur-autostart = "poppet_mcp.autostart_cli:main"
+# Legacy aliases (the project shipped as poppet-mcp before the rename).
 poppet-mcp = "poppet_mcp.server:main"
+poppet-bootstrap = "poppet_mcp.bootstrap_cli:main"
+poppet-autostart = "poppet_mcp.autostart_cli:main"
 
 [project.urls]
-Homepage = "https://github.com/brandonfigarella/poppet"
-Issues = "https://github.com/brandonfigarella/poppet/issues"
+Homepage = "https://github.com/figgiee/poppet"
+Issues = "https://github.com/figgiee/poppet/issues"
+Changelog = "https://github.com/figgiee/poppet/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/poppet_mcp"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/scripts",
+    "/docs",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/Makefile",
+    "/pyproject.toml",
+]
+
 [tool.ruff]
 line-length = 100
-# Global target is py38 — cascadeur_side/ runs inside Cascadeur's embedded
-# Python 3.8 interpreter, so it must stay 3.8-compatible. The MCP server in
-# src/ and tests/ require 3.11+, but a py38-targeted UP rule set is the
-# safe superset (it won't suggest 3.9+ syntax that would break cascadeur_side).
-target-version = "py38"
+# Both the MCP server and the in-app runtime execute on Python 3.11+:
+# the MCP server runs wherever the user installed cascadeur-mcp, and Cascadeur
+# 2026.2's embedded interpreter is CPython 3.11 (`python311.dll`).
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-# UP006/UP007/UP035/UP045: rewrite typing.List -> list, Optional[X] -> X | None,
-# etc. These require py39/py310 syntax — disabled because cascadeur_side must
-# stay 3.8-compatible and the global target is py38.
-ignore = ["UP006", "UP007", "UP035", "UP045"]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests and the src/ MCP server target py311+, so they're free to use modern
-# annotation syntax (`dict | None`, etc.). The `from __future__ import
-# annotations` lines in cascadeur_side/_framing.py and elsewhere are
-# load-bearing for 3.8 compat — never let ruff strip them.
-"cascadeur_side/**/*.py" = []
+# The in-app runtime is shipped as source text and executed inside Cascadeur.
+# It intentionally keeps a flat, defensive style; no import sorting needed there.
+"src/poppet_mcp/runtime/inapp.py" = ["I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "cascadeur_side"]
+pythonpath = ["src"]
 addopts = "-ra"

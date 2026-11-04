@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build + publish poppet-mcp to PyPI.
+# Build + publish cascadeur-mcp to PyPI.
 #
 # Usage:
 #   scripts/publish.sh test    # publishes to TestPyPI
@@ -31,14 +31,14 @@ case "$REPO" in
         python -m twine upload --repository testpypi dist/*
         echo
         echo "Verify install:"
-        echo "  uvx --index-url https://test.pypi.org/simple/ poppet-mcp"
+        echo "  uvx --index-url https://test.pypi.org/simple/ cascadeur-mcp"
         ;;
     prod)
         echo "Uploading to PyPI..."
         python -m twine upload dist/*
         echo
         echo "Verify install:"
-        echo "  uvx poppet-mcp"
+        echo "  uvx cascadeur-mcp"
         ;;
     *)
         echo "unknown target: $REPO (use 'test' or 'prod')" >&2
