@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Cascadeur 2026.2.3](https://img.shields.io/badge/Cascadeur-2026.2.3-orange.svg)](https://cascadeur.com/)
-[![Version 1.1.0](https://img.shields.io/badge/version-1.1.0-green.svg)](CHANGELOG.md)
+[![Version 1.1.1](https://img.shields.io/badge/version-1.1.1-green.svg)](CHANGELOG.md)
 
 Model Context Protocol server for [Cascadeur](https://cascadeur.com/) **2026.2.3+**.
 cascadeur-mcp gives Claude (or any MCP client) **45 typed tools** for character animation —
@@ -128,6 +128,12 @@ are kept as compatibility aliases (the project shipped as *poppet* before this
 release); the Python package is still `poppet_mcp`.
 
 ## Tools (46)
+
+`run_autophysics` requests the native **Snap to Auto Physics** action. It returns
+`status="requested"`, `completion_verified=false` and `converged=null`; inspect
+native feedback and the resulting animation separately. Its legacy `timeout_sec`
+argument is accepted but ignored. Stable key counts do not prove solver completion
+or physical balance, and blocking Cascadeur's main thread can delay native work.
 
 Verification legend: **live** = exercised end-to-end on Cascadeur 2026.2.3 during the
 1.0 release verification ([report](docs/verification/)); **expected** = unit-tested and

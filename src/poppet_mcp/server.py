@@ -201,8 +201,8 @@ def call_action(action_id: str) -> dict:
 
     Examples: ``Scene.Undo``, ``File.Save``, ``AutoPosingTool.AutoPosing``,
     ``AutoPhysicsTool.Snap to Auto Physics``. Actions are fire-and-forget: there
-    is no completion signal. Use ``run_autophysics()`` when you need to wait for
-    a solver to finish. Action ID catalog: https://cascadeur.com/help/category/301
+    is no completion signal, including for ``run_autophysics()``. Inspect the
+    resulting motion and native feedback. Action catalog: https://cascadeur.com/help/category/301
     """
     return _call("call_action", action_id=action_id)
 
@@ -372,13 +372,13 @@ def run_autoposing() -> dict:
 
 @mcp.tool()
 def run_autophysics(timeout_sec: float = 30.0) -> dict:
-    """Run AutoPhysics across the timeline and report convergence.
+    """Request native Snap to Auto Physics; completion is not verified.
 
-    Wraps ``AutoPhysicsTool.Snap to Auto Physics`` and polls scene state until it
-    stabilises, or returns ``{"converged": false, "status": "timeout"}``.
-    Keep ``timeout_sec`` under the script server's ~30s per-call cap (~25s is a
-    safe budget); for longer solves, call again or use the timestamped
-    ``Scene.SnapToPhysics*`` actions with ``call_action``.
+    Returns status="requested", completion_verified=false and converged=null.
+    The action exposes no solver completion signal. Inspect native feedback and
+    resulting motion separately. timeout_sec remains accepted for compatibility
+    but is ignored: sleeping on Cascadeur's main thread can delay native work,
+    and unchanged key counts cannot establish physical convergence.
     """
     return _call("autophysics_run", timeout_sec=timeout_sec)
 
