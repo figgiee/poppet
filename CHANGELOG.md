@@ -4,6 +4,15 @@ All notable changes to cascadeur-mcp — Cascadeur MCP. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per
 [SemVer](https://semver.org/).
 
+## [1.1.0] — 2026-11-08
+
+### Added
+
+- `sample_motion`: bounded transform sampling for named objects over an inclusive
+  frame range, without changing the playhead. Returns evaluated or local
+  positions, xyzw rotations and scale in native scene units. Reports unavailable
+  optional channels and rejects missing or ambiguous object names.
+
 ## [1.0.0] — 2026-10-26
 
 Rebuilt on Cascadeur 2026.2's built-in MCP script server. The Cascadeur-side

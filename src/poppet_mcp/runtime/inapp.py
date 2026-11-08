@@ -33,7 +33,7 @@ import traceback
 # Bump when the wire contract or handler semantics change. The MCP client reads
 # this value out of the source text (see runtime/__init__.py) and re-bootstraps
 # the in-app module whenever the running version differs.
-RUNTIME_VERSION = "1.0.0"
+RUNTIME_VERSION = "1.1.0"
 
 
 # ---------------------------------------------------------------------------
@@ -1068,6 +1068,104 @@ def _d_object_transform_get(params, scene):
     return out
 
 
+def _d_motion_sample(params, scene):
+    """Batch evaluated transform reads through one update context, with no playhead edit."""
+    names = params.get("object_names")
+    if not isinstance(names, list) or not 1 <= len(names) <= 32:
+        raise ValueError("object_names must contain 1 to 32 exact object names")
+    if any(not isinstance(name, str) or not name.strip() for name in names):
+        raise ValueError("object_names must contain non-empty strings")
+    if len(set(names)) != len(names):
+        raise ValueError("object_names must not contain duplicates")
+    values = [params.get("frame_start"), params.get("frame_end"), params.get("frame_step", 1)]
+    if any(isinstance(v, bool) or not isinstance(v, int) for v in values):
+        raise ValueError("frame_start, frame_end and frame_step must be integers")
+    start, end, step = values
+    if start < 0 or end < start or step < 1:
+        raise ValueError("Require 0 <= frame_start <= frame_end and frame_step >= 1")
+    count = (end - start) // step + 1
+    if count * len(names) > 2048:
+        raise ValueError(
+            "At most 2048 object/frame samples; increase frame_step or reduce the range"
+        )
+    local = params.get("local", False)
+    if not isinstance(local, bool):
+        raise ValueError("local must be a boolean")
+    mv = scene.model_viewer()
+    matches = {name: [] for name in names}
+    for oid in mv.get_objects():
+        name = mv.get_object_name(oid)
+        if name in matches:
+            matches[name].append(oid)
+    for name, ids in matches.items():
+        if len(ids) != 1:
+            raise ValueError(f"Expected one exact object named {name!r}; found {len(ids)}")
+    original_frame = scene.get_current_frame()
+    result = {
+        "coordinate_space": "local" if local else "evaluated",
+        "position_units": "native_scene_units",
+        "rotation_order": "xyzw",
+        "frame_start": start,
+        "frame_end": end,
+        "frame_step": step,
+        "frames": [],
+        "unavailable_channels": {},
+    }
+    prefix = "Local " if local else ""
+
+    def read(model, update, scene_updater):
+        nodes = {}
+        for name in names:
+            root = update.get_object_by_id(matches[name][0]).root_group()
+            nodes[name] = {
+                label: root.node_deep(prefix + channel)
+                for label, channel in [
+                    ("position", "Position"),
+                    ("rotation", "Rotation"),
+                    ("scale", "Scale"),
+                ]
+            }
+            if nodes[name]["position"] is None:
+                raise ValueError(
+                    f"{name!r} has no {prefix}Position channel; inspect its attributes"
+                )
+        for frame in range(start, end + 1, step):
+            row = {"frame": frame, "objects": {}}
+            for name in names:
+                transform = {}
+                missing = []
+                for label, node in nodes[name].items():
+                    if node is None:
+                        transform[label] = None
+                        missing.append(label)
+                        continue
+                    value = node.value(frame)
+                    if label == "rotation":
+                        q = value.to_quaternion()
+                        transform[label] = [
+                            float(getattr(q, c)() if callable(getattr(q, c)) else getattr(q, c))
+                            for c in "xyzw"
+                        ]
+                    else:
+                        transform[label] = _vec_to_list(value)
+                    if transform[label] is None:
+                        raise ValueError(f"Cannot read {label} for {name!r} at frame {frame}")
+                if missing:
+                    result["unavailable_channels"][name] = missing
+                row["objects"][name] = transform
+            result["frames"].append(row)
+
+    _checked_modify(scene, "cascadeur-mcp: sample motion", read, update=True)
+    result["sample_count"] = count * len(names)
+    result["playhead_unchanged"] = scene.get_current_frame() == original_frame
+    if not result["playhead_unchanged"]:
+        scene.set_current_frame(original_frame)
+        raise RuntimeError(
+            "Motion sampling unexpectedly changed the playhead; original frame restored"
+        )
+    return result
+
+
 def _d_object_attributes_list(params, scene):
     """List all attribute node names on an object's root_group.
 
@@ -2017,6 +2115,7 @@ _HANDLERS = {
     # New in v0.2 — hierarchy + transforms
     "object_hierarchy": _d_object_hierarchy,
     "object_transform_get": _d_object_transform_get,
+    "motion_sample": _d_motion_sample,
     "object_attributes_list": _d_object_attributes_list,
     # New in v0.2 — layer ops
     "layer_visible_set": _d_layer_visible_set,
