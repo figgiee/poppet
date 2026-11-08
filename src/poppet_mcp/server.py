@@ -17,9 +17,10 @@ Environment:
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 from poppet_mcp import __version__
 from poppet_mcp.cascadeur_connection import CascadeurConnection
@@ -107,6 +108,41 @@ def run_script(code: str) -> dict:
 # ----------------------------------------------------------------------------
 # Core scene / selection
 # ----------------------------------------------------------------------------
+
+
+@mcp.tool(
+    annotations={
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+)
+def sample_motion(
+    object_names: Annotated[list[str], Field(min_length=1, max_length=32)],
+    frame_start: Annotated[int, Field(ge=0)],
+    frame_end: Annotated[int, Field(ge=0)],
+    frame_step: Annotated[int, Field(ge=1)] = 1,
+    local: bool = False,
+) -> dict:
+    """Sample named objects over an inclusive frame range without moving the playhead.
+
+    Returns position, xyzw rotation and scale in native Cascadeur scene units.
+    `local=False` reads the evaluated Position/Rotation/Scale channels; true reads
+    their Local counterparts. At most 2048 object/frame samples are allowed;
+    increase frame_step or request a smaller range for longer animations. Frame
+    numbers are returned without inventing an FPS or converting linear units.
+    Missing/ambiguous objects and missing position channels are explicit errors;
+    unavailable optional rotation/scale channels are reported per object.
+    """
+    return _call(
+        "motion_sample",
+        object_names=object_names,
+        frame_start=frame_start,
+        frame_end=frame_end,
+        frame_step=frame_step,
+        local=local,
+    )
 
 
 @mcp.tool()

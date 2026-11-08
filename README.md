@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Cascadeur 2026.2.3](https://img.shields.io/badge/Cascadeur-2026.2.3-orange.svg)](https://cascadeur.com/)
-[![Version 1.0.0](https://img.shields.io/badge/version-1.0.0-green.svg)](CHANGELOG.md)
+[![Version 1.1.0](https://img.shields.io/badge/version-1.1.0-green.svg)](CHANGELOG.md)
 
 Model Context Protocol server for [Cascadeur](https://cascadeur.com/) **2026.2.3+**.
 cascadeur-mcp gives Claude (or any MCP client) **45 typed tools** for character animation —
@@ -127,7 +127,7 @@ The `POPPET_*` env names and the `poppet-mcp` / `poppet-bootstrap` console scrip
 are kept as compatibility aliases (the project shipped as *poppet* before this
 release); the Python package is still `poppet_mcp`.
 
-## Tools (45)
+## Tools (46)
 
 Verification legend: **live** = exercised end-to-end on Cascadeur 2026.2.3 during the
 1.0 release verification ([report](docs/verification/)); **expected** = unit-tested and
@@ -165,6 +165,15 @@ issue** = does not work on 2026.2.3 yet. Full results:
 | `read_telemetry_range(controller_ids, start, end, step?, local?)` | live — one update-graph walk |
 
 ### Layers & keyframes
+
+`sample_motion(object_names, frame_start, frame_end, frame_step=1, local=False)`
+reads up to 2048 object/frame transforms in one native update context. It leaves
+the playhead unchanged and returns native scene units, with xyzw quaternions.
+Use it to measure contact drift, root travel and joint discontinuities. It reads
+the evaluated transform channels by default; it does not infer contacts, FPS,
+physical balance or animation quality from those samples. Missing rotation or
+scale channels are reported explicitly. Native channel behavior applies outside
+the authored key range; use `list_layers` to inspect the scene range first.
 
 | Tools | Status |
 |---|---|
