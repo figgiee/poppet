@@ -89,6 +89,7 @@ def test_set_controller_position_packs_xyz_into_transform(stub_conn):
             "controller_id": "pelvis_Box",
             "frame": 0,
             "transform": {"position": [0.0, 0.0, 30.0]},
+            "local": False,
         },
     )
 

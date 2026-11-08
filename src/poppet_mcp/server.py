@@ -201,8 +201,8 @@ def call_action(action_id: str) -> dict:
 
     Examples: ``Scene.Undo``, ``File.Save``, ``AutoPosingTool.AutoPosing``,
     ``AutoPhysicsTool.Snap to Auto Physics``. Actions are fire-and-forget: there
-    is no completion signal. Use ``run_autophysics()`` when you need to wait for
-    a solver to finish. Action ID catalog: https://cascadeur.com/help/category/301
+    is no completion signal, including for ``run_autophysics()``. Inspect the
+    resulting motion and native feedback. Action catalog: https://cascadeur.com/help/category/301
     """
     return _call("call_action", action_id=action_id)
 
@@ -237,13 +237,21 @@ def get_keyframes(layer_id: str, frame_start: int, frame_end: int) -> dict:
 
 
 @mcp.tool()
-def set_controller_position(controller_id: str, frame: int, x: float, y: float, z: float) -> dict:
-    """Set a controller's world-space position at ``frame`` (creates a key)."""
+def set_controller_position(
+    controller_id: str, frame: int, x: float, y: float, z: float, local: bool = False
+) -> dict:
+    """Set world Position at ``frame`` (creates a key); local=True selects Local Position.
+
+    Point controllers expose Position rather than Local Position. The default
+    matches the documented world-space behavior; use local=True for a joint's
+    local coordinates when that channel exists.
+    """
     return _call(
         "keyframe_set",
         controller_id=controller_id,
         frame=frame,
         transform={"position": [x, y, z]},
+        local=local,
     )
 
 
@@ -372,13 +380,13 @@ def run_autoposing() -> dict:
 
 @mcp.tool()
 def run_autophysics(timeout_sec: float = 30.0) -> dict:
-    """Run AutoPhysics across the timeline and report convergence.
+    """Request native Snap to Auto Physics; completion is not verified.
 
-    Wraps ``AutoPhysicsTool.Snap to Auto Physics`` and polls scene state until it
-    stabilises, or returns ``{"converged": false, "status": "timeout"}``.
-    Keep ``timeout_sec`` under the script server's ~30s per-call cap (~25s is a
-    safe budget); for longer solves, call again or use the timestamped
-    ``Scene.SnapToPhysics*`` actions with ``call_action``.
+    Returns status="requested", completion_verified=false and converged=null.
+    The action exposes no solver completion signal. Inspect native feedback and
+    resulting motion separately. timeout_sec remains accepted for compatibility
+    but is ignored: sleeping on Cascadeur's main thread can delay native work,
+    and unchanged key counts cannot establish physical convergence.
     """
     return _call("autophysics_run", timeout_sec=timeout_sec)
 

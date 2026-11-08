@@ -4,6 +4,19 @@ All notable changes to cascadeur-mcp — Cascadeur MCP. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per
 [SemVer](https://semver.org/).
 
+## [1.1.1] — 2026-11-08
+
+### Fixed
+
+- Position writes now use the documented world-space channel by default, so
+  native Point controllers work. Set `local=True` to request a joint's local
+  position. Motion sampling preserves actionable channel errors when Cascadeur
+  would otherwise swallow the callback exception.
+- AutoPhysics no longer reports convergence from unchanged frame/key counts.
+  The native snap action has no completion signal: the tool returns an explicit
+  unverified request status and does not block Cascadeur's main thread to poll it.
+  The legacy timeout argument remains accepted but is ignored.
+
 ## [1.1.0] — 2026-11-08
 
 ### Added

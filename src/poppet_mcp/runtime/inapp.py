@@ -33,7 +33,7 @@ import traceback
 # Bump when the wire contract or handler semantics change. The MCP client reads
 # this value out of the source text (see runtime/__init__.py) and re-bootstraps
 # the in-app module whenever the running version differs.
-RUNTIME_VERSION = "1.1.0"
+RUNTIME_VERSION = "1.1.1"
 
 
 # ---------------------------------------------------------------------------
@@ -573,57 +573,24 @@ def _d_autopose_run(params, scene):
 
 
 def _d_autophysics_run(params, scene):
-    """Wrap AutoPhysicsTool.Snap to Auto Physics with convergence polling.
-
-    Since call_action returns no completion signal, poll a coarse scene-state
-    fingerprint until it stops changing or timeout fires.
-    """
+    """Request the native snap action without inventing a completion signal."""
     import csc
-
-    timeout_sec = float(params.get("timeout_sec", 30.0))
-    poll_interval = float(params.get("poll_interval", 0.25))
 
     app = csc.app.get_application()
     am = app.get_action_manager()
     am.call_action("AutoPhysicsTool.Snap to Auto Physics")
-
-    deadline = time.time() + timeout_sec
-    last_fp = _scene_state_fingerprint(scene)
-    stable_for = 0.0
-    while time.time() < deadline:
-        time.sleep(poll_interval)
-        fp = _scene_state_fingerprint(scene)
-        if fp == last_fp:
-            stable_for += poll_interval
-            if stable_for >= 0.5:
-                return {
-                    "invoked": "AutoPhysicsTool.Snap to Auto Physics",
-                    "converged": True,
-                }
-        else:
-            stable_for = 0.0
-            last_fp = fp
     return {
         "invoked": "AutoPhysicsTool.Snap to Auto Physics",
-        "converged": False,
-        "status": "timeout",
+        "status": "requested",
+        "converged": None,
+        "completion_verified": False,
+        "legacy_timeout_ignored": True,
+        "note": (
+            "The native action exposes no completion signal. Unchanged key counts do not "
+            "prove solver convergence. Inspect native feedback and resulting motion; "
+            "sample_motion can measure transforms but cannot certify physical balance."
+        ),
     }
-
-
-def _scene_state_fingerprint(scene):
-    """Coarse fingerprint of scene state for convergence detection."""
-    try:
-        lv = scene.layers_viewer()
-        # Sum all key frame counts as a coarse signal — changes when keys move.
-        total = 0
-        for lid in lv.all_layer_ids():
-            try:
-                total += len(list(lv.layer(lid).key_frame_indices()))
-            except Exception:
-                pass
-        return (scene.get_current_frame(), total)
-    except Exception:
-        return 0
 
 
 def _d_telemetry_read(params, scene):
@@ -1113,7 +1080,7 @@ def _d_motion_sample(params, scene):
     }
     prefix = "Local " if local else ""
 
-    def read(model, update, scene_updater):
+    def read_transforms(model, update, scene_updater):
         nodes = {}
         for name in names:
             root = update.get_object_by_id(matches[name][0]).root_group()
@@ -1155,7 +1122,19 @@ def _d_motion_sample(params, scene):
                 row["objects"][name] = transform
             result["frames"].append(row)
 
+    failures = []
+
+    def read(model, update, scene_updater):
+        try:
+            read_transforms(model, update, scene_updater)
+        except Exception as error:
+            # Cascadeur swallows callback exceptions. Preserve the useful error
+            # outside this read-only update context instead of returning a generic rejection.
+            failures.append(error)
+
     _checked_modify(scene, "cascadeur-mcp: sample motion", read, update=True)
+    if failures:
+        raise ValueError(f"Motion sampling failed: {failures[0]}") from failures[0]
     result["sample_count"] = count * len(names)
     result["playhead_unchanged"] = scene.get_current_frame() == original_frame
     if not result["playhead_unchanged"]:
