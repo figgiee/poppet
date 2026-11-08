@@ -135,6 +135,9 @@ native feedback and the resulting animation separately. Its legacy `timeout_sec`
 argument is accepted but ignored. Stable key counts do not prove solver completion
 or physical balance, and blocking Cascadeur's main thread can delay native work.
 
+`set_controller_position` writes world `Position` by default, including native
+Point controllers. Pass `local=True` for a joint's `Local Position` channel.
+
 Verification legend: **live** = exercised end-to-end on Cascadeur 2026.2.3 during the
 1.0 release verification ([report](docs/verification/)); **expected** = unit-tested and
 statically verified against the 2026.2.3 stubs, not yet exercised live; **known

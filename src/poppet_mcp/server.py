@@ -237,13 +237,21 @@ def get_keyframes(layer_id: str, frame_start: int, frame_end: int) -> dict:
 
 
 @mcp.tool()
-def set_controller_position(controller_id: str, frame: int, x: float, y: float, z: float) -> dict:
-    """Set a controller's world-space position at ``frame`` (creates a key)."""
+def set_controller_position(
+    controller_id: str, frame: int, x: float, y: float, z: float, local: bool = False
+) -> dict:
+    """Set world Position at ``frame`` (creates a key); local=True selects Local Position.
+
+    Point controllers expose Position rather than Local Position. The default
+    matches the documented world-space behavior; use local=True for a joint's
+    local coordinates when that channel exists.
+    """
     return _call(
         "keyframe_set",
         controller_id=controller_id,
         frame=frame,
         transform={"position": [x, y, z]},
+        local=local,
     )
 
 

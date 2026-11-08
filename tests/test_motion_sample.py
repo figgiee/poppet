@@ -62,6 +62,26 @@ def test_local_channels_and_optional_missing_scale_are_explicit():
     assert out["coordinate_space"] == "local"
 
 
+def test_missing_position_channel_keeps_its_actionable_error():
+    scene = scene_for(names=("point",))
+    update = MagicMock()
+    update.get_object_by_id.return_value.root_group.return_value.node_deep.return_value = None
+
+    def native_context(label, callback):
+        try:
+            callback(MagicMock(), update, MagicMock())
+            return True
+        except Exception:
+            return False
+
+    scene.modify_update.side_effect = native_context
+    with pytest.raises(ValueError, match="point.*no Local Position channel"):
+        runtime._d_motion_sample(
+            {"object_names": ["point"], "frame_start": 0, "frame_end": 0, "local": True},
+            scene,
+        )
+
+
 @pytest.mark.parametrize(
     "change",
     [

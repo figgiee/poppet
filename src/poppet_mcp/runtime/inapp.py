@@ -1080,7 +1080,7 @@ def _d_motion_sample(params, scene):
     }
     prefix = "Local " if local else ""
 
-    def read(model, update, scene_updater):
+    def read_transforms(model, update, scene_updater):
         nodes = {}
         for name in names:
             root = update.get_object_by_id(matches[name][0]).root_group()
@@ -1122,7 +1122,19 @@ def _d_motion_sample(params, scene):
                 row["objects"][name] = transform
             result["frames"].append(row)
 
+    failures = []
+
+    def read(model, update, scene_updater):
+        try:
+            read_transforms(model, update, scene_updater)
+        except Exception as error:
+            # Cascadeur swallows callback exceptions. Preserve the useful error
+            # outside this read-only update context instead of returning a generic rejection.
+            failures.append(error)
+
     _checked_modify(scene, "cascadeur-mcp: sample motion", read, update=True)
+    if failures:
+        raise ValueError(f"Motion sampling failed: {failures[0]}") from failures[0]
     result["sample_count"] = count * len(names)
     result["playhead_unchanged"] = scene.get_current_frame() == original_frame
     if not result["playhead_unchanged"]:
