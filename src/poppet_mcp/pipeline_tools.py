@@ -167,23 +167,36 @@ def rig_audit(
     return result
 
 
-def _rig(refresh: bool = False) -> Rig:
-    scene = _call("scene_info").get("name") or "scene"
+def _rig(rest_file: str | None = None, refresh: bool = False) -> tuple[Rig, str]:
+    """Load the solver's rest pose: from a saved file, else frame 0 of the open scene."""
+    if rest_file:
+        shipped = DATA_DIR / f"{rest_file}_rest.json"
+        path = shipped if shipped.exists() else Path(rest_file)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return Rig(data.get("points", data)), f"file:{rest_file}"
+    scene = _call("scene_info").get("scene_name") or "scene"
     if refresh or scene not in _rig_cache:
         rest = _call("rig_rest_dump", types=["Point", "Limb Direction"], frame=0)
         _rig_cache[scene] = Rig(rest["points"])
-    return _rig_cache[scene]
+    return _rig_cache[scene], f"frame 0 of {scene}"
 
 
 @mcp.tool()
-def get_rig_rest(frame: int = 0, include_joints: bool = False) -> dict:
+def get_rig_rest(frame: int = 0, include_joints: bool = False, save_to: str | None = None) -> dict:
     """World positions of the rig's controller points (and joints) at ``frame``.
 
-    Use frame 0 of a freshly loaded rig as the rest pose. Also reports the ankle
-    and hip heights the pose solver uses, so specs can put soles on the floor.
+    The pose solver needs the rig's true rest pose. Capture it once from a freshly
+    loaded, unanimated rig with ``save_to`` (a .json path), then pass that file as
+    ``rest_file`` to ``block_poses``. Frame 0 of a scene that already has keys is
+    not a rest pose. Also reports the ankle and hip heights the solver uses, so
+    specs can put soles on the floor.
     """
     types = ["Point", "Limb Direction"] + (["Joint"] if include_joints else [])
     rest = _call("rig_rest_dump", types=types, frame=frame)
+    if save_to:
+        Path(save_to).parent.mkdir(parents=True, exist_ok=True)
+        Path(save_to).write_text(json.dumps(rest, indent=1), encoding="utf-8")
+        rest["saved_to"] = save_to
     try:
         rig = Rig(rest["points"])
         rest["naming"] = rig.naming
@@ -215,7 +228,10 @@ def set_pose_keys(keys: dict[str, dict[str, list[float]]], reset_frames: int | N
 
 @mcp.tool()
 def block_poses(
-    poses: list[dict], reset_frames: int | None = None, refresh_rig: bool = False
+    poses: list[dict],
+    reset_frames: int | None = None,
+    rest_file: str | None = None,
+    refresh_rig: bool = False,
 ) -> dict:
     """Block key poses from compact specs and key them on the open rig.
 
@@ -227,8 +243,14 @@ def block_poses(
 
     Block from reference: read the athlete's key frames first, then write one pose
     per key moment (contact, down, passing, up, plant, takeoff, apex, landing).
+
+    ``rest_file`` is a rest pose saved with ``get_rig_rest(save_to=...)``, or
+    ``"ue5_quinn"`` for the shipped UE5 Quinn rest pose (Quinn, Manny-proportioned
+    rigs need their own capture). Without
+    it the solver reads frame 0 of the open scene, which is only correct while the
+    rig is unanimated; the reply's ``rest_source`` says which was used.
     """
-    rig = _rig(refresh=refresh_rig)
+    rig, rest_source = _rig(rest_file=rest_file, refresh=refresh_rig)
     keys: dict[str, dict[str, list[float]]] = {}
     labels = {}
     for item in poses:
@@ -236,7 +258,9 @@ def block_poses(
         keys[str(frame)] = rig.solve(item["pose"])
         labels[frame] = item.get("label", "")
     result = set_pose_keys(keys, reset_frames=reset_frames)
-    result.update(naming=rig.naming, ankle_height=rig.ankle_height, labels=labels)
+    result.update(
+        naming=rig.naming, ankle_height=rig.ankle_height, labels=labels, rest_source=rest_source
+    )
     return result
 
 

@@ -241,3 +241,10 @@ def test_inapp_pipeline_handlers_registered():
         "viewport_set",
     ):
         assert name in runtime._HANDLERS
+
+
+def test_block_poses_with_shipped_rest_file(fake):
+    rig = Rig(json.loads(FIXTURE.read_text()))
+    result = pt.block_poses([{"frame": 0, "pose": rig.rest_pose()}], rest_file="ue5_quinn")
+    assert result["rest_source"] == "file:ue5_quinn"
+    assert not [c for c in fake.calls if c[0] == "rig_rest_dump"]
