@@ -248,3 +248,122 @@ def test_block_poses_with_shipped_rest_file(fake):
     result = pt.block_poses([{"frame": 0, "pose": rig.rest_pose()}], rest_file="ue5_quinn")
     assert result["rest_source"] == "file:ue5_quinn"
     assert not [c for c in fake.calls if c[0] == "rig_rest_dump"]
+
+
+def test_block_poses_passes_interpolation(fake):
+    rig = Rig(json.loads(FIXTURE.read_text()))
+    pt.block_poses(
+        [{"frame": 0, "pose": rig.rest_pose()}], rest_file="ue5_quinn", interpolation="STEP"
+    )
+    _, params = [c for c in fake.calls if c[0] == "pose_keys_set"][0]
+    assert params["interpolation"] == "STEP"
+
+
+def test_inapp_interpolation_enum_rejects_unknown(csc_mock):
+    from tests.runtime_loader import runtime
+
+    csc_mock.layers.layer.Interpolation = type("Interp", (), {"BEZIER": 1, "STEP": 2})
+    assert runtime._interpolation_enum("bezier") == 1
+    with pytest.raises(ValueError, match="BEZIER"):
+        runtime._interpolation_enum("smooth")
+
+
+def _ballistic_tracks(frames, g, rise_scale=1.0, foot_slide=0.0):
+    """Pelvis thrown at frame 10 and caught at frame 20; foot planted 0-9 and 21-30."""
+    pelvis, foot = [], []
+    for f in frames:
+        if 10 <= f <= 20:
+            t = f - 9  # frames since the last support frame
+            y = 90 + rise_scale * (g * t * (12 - t) / 2)
+        else:
+            y = 90.0
+        pelvis.append([0.0, y, float(f * 10)])
+        foot.append([0.0, 8.0, 100.0 + (foot_slide * f if f <= 9 else 0.0)])
+    return {"pelvis_MainPoint": pelvis, "foot_MainPoint_l": foot}
+
+
+def test_lint_accepts_ballistic_arc():
+    from poppet_mcp.motion_checks import lint_tracks
+
+    frames = list(range(31))
+    g = 1.0889
+    problems = lint_tracks(
+        _ballistic_tracks(frames, g),
+        frames,
+        {"foot_MainPoint_l": [[0, 9], [21, 30]]},
+        "pelvis_MainPoint",
+        g,
+    )
+    airborne = [p for p in problems if p["kind"] == "airborne_phase"]
+    assert len(airborne) == 1 and "why" not in airborne[0]
+    assert abs(airborne[0]["ratio"] - 1) < 0.1
+
+
+def test_lint_flags_floaty_flight_and_sliding_foot():
+    from poppet_mcp.motion_checks import lint_tracks
+
+    frames = list(range(31))
+    g = 1.0889
+    problems = lint_tracks(
+        _ballistic_tracks(frames, g, rise_scale=0.3, foot_slide=10.0),
+        frames,
+        {"foot_MainPoint_l": [[0, 9], [21, 30]]},
+        "pelvis_MainPoint",
+        g,
+    )
+    kinds = {p["kind"] for p in problems if "why" in p}
+    assert kinds == {"planted_point_slides", "airborne_phase"}
+
+
+def test_use_scene_routes_data_and_guards_ui(fake, monkeypatch):
+    original = fake.__call__
+
+    def with_tabs(command, **params):
+        if command == "scene_info":
+            fake.calls.append((command, params))
+            return {
+                "scene_name": params.get("scene_name"),
+                "current_tab": "Other.casc",
+                "object_count": 3,
+            }
+        return original(command, **params)
+
+    monkeypatch.setattr(pt, "_call", with_tabs)
+    try:
+        pt.use_scene("Quinn-Copy")
+        pt.set_fulcrum_spans({"foot_MainPoint_l": [[1, 2]]})
+        assert (
+            "fulcrum_spans_set",
+            {"spans": {"foot_MainPoint_l": [[1, 2]]}, "scene_name": "Quinn-Copy"},
+        ) in fake.calls
+        with pytest.raises(RuntimeError, match="visible tab"):
+            pt.set_viewport(mode="View")
+    finally:
+        pt.use_scene(None)
+
+
+def test_fulcrum_mismatch_warns(fake, monkeypatch):
+    original = fake.__call__
+
+    def collapsed(command, **params):
+        if command == "fulcrum_spans_set":
+            return {
+                "frames": 40,
+                "readback": {"foot_MainPoint_l": [[0, 14]]},
+                "no_fulcrum_behaviour": [],
+            }
+        return original(command, **params)
+
+    monkeypatch.setattr(pt, "_call", collapsed)
+    result = pt.set_fulcrum_spans({"foot_MainPoint_l": [[12, 16]]})
+    assert "foot_MainPoint_l" in result["mismatched"] and "keys" in result["warning"]
+
+
+def test_inapp_exec_captures_stdout():
+    from tests.runtime_loader import runtime
+
+    code = "print('hi')\nresult = 42"
+    reply = runtime._dispatch_legacy({"type": "exec_csc", "params": {"code": code}}, None)
+    assert reply["status"] == "success"
+    assert reply["result"]["stdout"] == "hi\n"
+    assert reply["result"]["repr"] == "42"

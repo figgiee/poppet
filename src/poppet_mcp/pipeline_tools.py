@@ -54,6 +54,49 @@ CONTACT_POINTS_CASCADEUR = [
 
 _rig_cache: dict[str, Rig] = {}
 
+# Scene targeting. Brandon opens tabs while agents work, so "the current scene" is
+# not a safe target. use_scene() pins a scene by name: data commands are routed
+# to it without switching tabs, and commands that act on the visible tab (native
+# actions, selection, viewport, renders) refuse to run when another tab is open.
+_target_scene: str | None = None
+UI_BOUND = {"call_action", "viewport_set", "viewport_screenshot", "selection_set"}
+
+
+def _scall(command: str, **params: Any) -> Any:
+    if _target_scene:
+        if command in UI_BOUND:
+            tab = _call("scene_info").get("current_tab") or ""
+            if not tab.startswith(_target_scene):
+                raise RuntimeError(
+                    f"{command} acts on the visible tab, which is {tab!r}, not the pinned scene "
+                    f"{_target_scene!r}. Ask the user to switch tabs, or call use_scene(None)."
+                )
+        else:
+            params.setdefault("scene_name", _target_scene)
+    return _call(command, **params)
+
+
+@mcp.tool()
+def use_scene(scene_name: str | None) -> dict:
+    """Pin every pipeline tool to the open scene (tab) named ``scene_name``.
+
+    Data tools (keys, fulcrums, rig reads, sampling) then work on that scene even
+    when another tab is visible. Tools that drive the visible tab (physics actions,
+    obstacles, viewport, renders) refuse to run while a different tab is showing,
+    instead of silently editing the wrong scene. ``None`` unpins.
+    """
+    global _target_scene
+    if scene_name is None:
+        _target_scene = None
+        return {"pinned": None}
+    info = _call("scene_info", scene_name=scene_name)
+    _target_scene = scene_name
+    return {
+        "pinned": scene_name,
+        "current_tab": info.get("current_tab"),
+        "objects": info.get("object_count"),
+    }
+
 
 # ----------------------------------------------------------------------------
 # Preflight
@@ -153,10 +196,10 @@ def rig_audit(
     expected = _expected_joints(expected_joints)
     points = contact_points
     if points is None:
-        rest = _call("rig_rest_dump", types=["Point"])
+        rest = _scall("rig_rest_dump", types=["Point"])
         names = set(rest["points"])
         points = CONTACT_POINTS_UE if "ball_MainPoint_l" in names else CONTACT_POINTS_CASCADEUR
-    result = _call("rig_audit", expected_joints=expected, contact_points=points)
+    result = _scall("rig_audit", expected_joints=expected, contact_points=points)
     missing_fulcrum = [
         n
         for n, b in result["contact_point_behaviours"].items()
@@ -174,9 +217,9 @@ def _rig(rest_file: str | None = None, refresh: bool = False) -> tuple[Rig, str]
         path = shipped if shipped.exists() else Path(rest_file)
         data = json.loads(path.read_text(encoding="utf-8"))
         return Rig(data.get("points", data)), f"file:{rest_file}"
-    scene = _call("scene_info").get("scene_name") or "scene"
+    scene = _target_scene or _scall("scene_info").get("scene_name") or "scene"
     if refresh or scene not in _rig_cache:
-        rest = _call("rig_rest_dump", types=["Point", "Limb Direction"], frame=0)
+        rest = _scall("rig_rest_dump", types=["Point", "Limb Direction"], frame=0)
         _rig_cache[scene] = Rig(rest["points"])
     return _rig_cache[scene], f"frame 0 of {scene}"
 
@@ -192,7 +235,7 @@ def get_rig_rest(frame: int = 0, include_joints: bool = False, save_to: str | No
     specs can put soles on the floor.
     """
     types = ["Point", "Limb Direction"] + (["Joint"] if include_joints else [])
-    rest = _call("rig_rest_dump", types=types, frame=frame)
+    rest = _scall("rig_rest_dump", types=types, frame=frame)
     if save_to:
         Path(save_to).parent.mkdir(parents=True, exist_ok=True)
         Path(save_to).write_text(json.dumps(rest, indent=1), encoding="utf-8")
@@ -213,17 +256,36 @@ def get_rig_rest(frame: int = 0, include_joints: bool = False, save_to: str | No
 
 
 @mcp.tool()
-def set_pose_keys(keys: dict[str, dict[str, list[float]]], reset_frames: int | None = None) -> dict:
+def set_pose_keys(
+    keys: dict[str, dict[str, list[float]]],
+    reset_frames: int | None = None,
+    interpolation: str | None = "BEZIER",
+) -> dict:
     """Key world positions for named controller points: ``{frame: {point: [x, y, z]}}``.
 
     Writes every value inside one undoable scene modification and sets a key on
     every animation layer at each frame. ``reset_frames`` clears all existing keys
     first and sets the clip length (use it when re-blocking a take from scratch).
+    ``interpolation`` sets the in-between type after each key: ``BEZIER`` (smooth,
+    the default for blocking into motion), ``LINEAR`` or ``STEP`` (holds, for
+    reviewing poses one by one); ``None`` leaves sections as they are.
     """
     params: dict[str, Any] = {"keys": keys}
     if reset_frames:
         params.update(reset=True, frames=int(reset_frames))
-    return _call("pose_keys_set", **params)
+    if interpolation:
+        params["interpolation"] = interpolation
+    return _scall("pose_keys_set", **params)
+
+
+@mcp.tool()
+def set_interpolation(frames: list[int], interpolation: str = "BEZIER") -> dict:
+    """Set the in-between type for the sections that start at ``frames``, on every layer.
+
+    Typical use: ``STEP`` while judging key poses one at a time, then ``BEZIER``
+    before the physics pass so AutoPhysics works on smooth motion.
+    """
+    return _scall("interpolation_set", frames=frames, interpolation=interpolation)
 
 
 @mcp.tool()
@@ -231,6 +293,7 @@ def block_poses(
     poses: list[dict],
     reset_frames: int | None = None,
     rest_file: str | None = None,
+    interpolation: str | None = "BEZIER",
     refresh_rig: bool = False,
 ) -> dict:
     """Block key poses from compact specs and key them on the open rig.
@@ -257,7 +320,7 @@ def block_poses(
         frame = int(item["frame"])
         keys[str(frame)] = rig.solve(item["pose"])
         labels[frame] = item.get("label", "")
-    result = set_pose_keys(keys, reset_frames=reset_frames)
+    result = set_pose_keys(keys, reset_frames=reset_frames, interpolation=interpolation)
     result.update(
         naming=rig.naming, ankle_height=rig.ankle_height, labels=labels, rest_source=rest_source
     )
@@ -278,7 +341,21 @@ def set_fulcrum_spans(spans: dict[str, list[list[int]]]) -> dict:
     AutoPhysics then treats those points as fixed supports. The reply reads the
     state back per frame so you can confirm what Cascadeur stored.
     """
-    return _call("fulcrum_spans_set", spans=spans)
+    result = _scall("fulcrum_spans_set", spans=spans)
+    requested = {n: sorted(map(list, r)) for n, r in spans.items()}
+    mismatched = {
+        n: {"requested": requested[n], "stored": result["readback"].get(n)}
+        for n in requested
+        if n in result.get("readback", {}) and result["readback"][n] != requested[n]
+    }
+    result["mismatched"] = mismatched
+    if mismatched:
+        result["warning"] = (
+            "Cascadeur stored different spans than requested. Fulcrum state follows keys: "
+            "put keys at each span's first and last frame (set_pose_keys or block_poses) "
+            "and set the spans again."
+        )
+    return result
 
 
 def _box_glb(path: Path, lo, hi, name: str) -> None:
@@ -381,14 +458,14 @@ def add_box_obstacle(
     safe = re.sub(r"[^A-Za-z0-9_-]", "_", name)
     path = folder / f"{safe}.glb"
     _box_glb(path, [v / 100 for v in min_cm], [v / 100 for v in max_cm], safe)
-    imported = _call("glb_import", path=str(path), scale_factor=100.0)["imported"]
+    imported = _scall("glb_import", path=str(path), scale_factor=100.0)["imported"]
     result: dict[str, Any] = {"glb": str(path), "imported": imported}
     if make_kinematic_collision and imported:
         meshes = [o["name"] for o in imported if o.get("type") and "mesh" in o["type"].lower()] or [
             imported[0]["name"]
         ]
-        _call("selection_set", object_names=meshes)
-        _call("call_action", action_id="Collision.Add kinematic mesh")
+        _scall("selection_set", object_names=meshes)
+        _scall("call_action", action_id="Collision.Add kinematic mesh")
         result["kinematic_collision_requested_for"] = meshes
     return result
 
@@ -406,7 +483,7 @@ PHYSICS_ACTIONS = {
 
 
 def _sample(objects: list[str], start: int, end: int, step: int) -> dict[str, list]:
-    data = _call(
+    data = _scall(
         "motion_sample",
         object_names=objects,
         frame_start=start,
@@ -456,7 +533,7 @@ def physics_pass(
     before = _sample(objects, frame_start, frame_end, frame_step)
     invoked = []
     for step in steps:
-        _call("call_action", action_id=PHYSICS_ACTIONS[step])
+        _scall("call_action", action_id=PHYSICS_ACTIONS[step])
         invoked.append(PHYSICS_ACTIONS[step])
     deadline = time.monotonic() + settle_timeout_sec
     previous = None
@@ -516,7 +593,7 @@ def set_viewport(
         params["camera"] = {"position": camera_position, "target": camera_target}
     if frame is not None:
         params["frame"] = frame
-    return _call("viewport_set", **params)
+    return _scall("viewport_set", **params)
 
 
 def _wait_file(path: Path, timeout: float) -> bool:
@@ -628,7 +705,7 @@ def render_frames(
     if not (camera_position and camera_target) and camera_preset and follow_point:
         samples = _sample([follow_point], frame_start, frame_end, frame_step)[follow_point]
         focus_track = dict(zip(frames, samples))
-    _call("viewport_set", mode=mode)
+    _scall("viewport_set", mode=mode)
     written: list[str] = []
     failed: list[int] = []
     for i, frame in enumerate(frames):
@@ -638,15 +715,15 @@ def render_frames(
                 params["camera"] = {"position": camera_position, "target": camera_target}
         elif focus_track and (track_camera or i == 0):
             params["camera"] = _camera_for(camera_preset, focus_track[frame], camera_distance)
-        _call("viewport_set", **params)
+        _scall("viewport_set", **params)
         path = out / f"{frame:04d}.png"
         if path.exists():
             path.unlink()
-        _call("viewport_screenshot", path=str(path), width=width, height=height)
+        _scall("viewport_screenshot", path=str(path), width=width, height=height)
         if i == 0:  # the first render after a camera move can show the old view; render it twice
             _wait_file(path, frame_timeout_sec)
             path.unlink(missing_ok=True)
-            _call("viewport_screenshot", path=str(path), width=width, height=height)
+            _scall("viewport_screenshot", path=str(path), width=width, height=height)
         if _wait_file(path, frame_timeout_sec):
             written.append(str(path))
         else:
@@ -722,3 +799,7 @@ def render_frames(
             make_contact_sheet_file([Path(p) for p in picks], out / "sheet.png", 4, labels)
         )
     return result
+
+
+# Measurement and lint tools build on the helpers above.
+from poppet_mcp import motion_checks  # noqa: E402,F401

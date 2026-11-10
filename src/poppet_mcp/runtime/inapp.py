@@ -102,6 +102,8 @@ def _dispatch_legacy(message, scene):
     if handler is None:
         return {"status": "error", "message": f"unknown command: {cmd_type!r}"}
     try:
+        if params.get("scene_name"):
+            scene = _scene_by_name(params["scene_name"])
         result = handler(params, scene)
         return {"status": "success", "result": result}
     except Exception as e:
@@ -110,6 +112,20 @@ def _dispatch_legacy(message, scene):
             "message": f"{type(e).__name__}: {e}",
             "traceback": traceback.format_exc(),
         }
+
+
+def _scene_by_name(name):
+    """Domain scene of the open tab named ``name`` (exact, else unique prefix); no tab switch."""
+    import csc
+
+    views = list(csc.app.get_application().get_scene_manager().scenes())
+    names = [v.name() for v in views]
+    matches = [v for v in views if v.name() == name] or [
+        v for v in views if v.name().startswith(name)
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"scene {name!r} matched {len(matches)} open scenes; open: {names}")
+    return matches[0].domain_scene()
 
 
 def _safe_repr(obj):
@@ -217,12 +233,24 @@ def _d_exec_csc(params, scene):
     _refuse_blocked(code)
     import csc
 
+    import contextlib
+    import io
+
     ns = {"csc": csc, "scene": scene, "_result": None}
-    try:
-        ns["_result"] = eval(code, ns)
-    except SyntaxError:
-        exec(code, ns)
-    return {"repr": _safe_repr(ns.get("_result"))}
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+        try:
+            ns["_result"] = eval(code, ns)
+        except SyntaxError:
+            exec(code, ns)
+    if ns.get("_result") is None and "result" in ns:
+        ns["_result"] = ns["result"]
+    out = buffer.getvalue()
+    return {
+        "repr": _safe_repr(ns.get("_result")),
+        "stdout": out[-20000:],
+        "stdout_truncated": len(out) > 20000,
+    }
 
 
 def _d_call_action(params, scene):
@@ -266,7 +294,8 @@ def _d_scene_info(params, scene):
     # View-scene name + animation_boundary live on csc.view.Scene, not domain scene.
     try:
         view_scene = csc.app.get_application().current_scene()
-        info["scene_name"] = view_scene.name()
+        info["scene_name"] = params.get("scene_name") or view_scene.name()
+        info["current_tab"] = view_scene.name()
     except Exception as e:
         info["scene_name_error"] = str(e)
 
@@ -2257,6 +2286,8 @@ def _d_pose_keys_set(params, scene):
         raise ValueError("keys must be a non-empty {frame: {object_name: [x, y, z]}} mapping")
     frames_total = params.get("frames")
     reset = bool(params.get("reset", False))
+    interp_name = params.get("interpolation")
+    interp = _interpolation_enum(interp_name) if interp_name else None
     objs = _objects_by_name(scene)
     missing = sorted({n for fk in keys.values() for n in fk if n not in objs})
     if missing:
@@ -2289,10 +2320,55 @@ def _d_pose_keys_set(params, scene):
             model.set_fixed_interpolation_if_need(ids, f)
             updater.run_update(ids, f)
             written["frames"] += 1
+        if interp is not None:
+            _apply_interpolation(scene, le, [int(f) for f in keys], interp)
+            written["interpolation"] = str(interp_name).upper()
         le.normalize_sections(scene)
 
     _checked_modify(scene, params.get("title") or "cascadeur-mcp pose keys", mod, update=True)
     return written
+
+
+def _interpolation_enum(name):
+    import csc
+
+    enum = csc.layers.layer.Interpolation
+    key = str(name).upper()
+    if not hasattr(enum, key):
+        options = [m for m in dir(enum) if not m.startswith("_")]
+        raise ValueError(f"unknown interpolation {name!r}; options: {options}")
+    return getattr(enum, key)
+
+
+def _apply_interpolation(scene, le, frames, interp):
+    lv = scene.layers_viewer()
+    layer_ids = [lid for lid in lv.all_layer_ids() if not lid.is_null()]
+
+    def setsec(sec):
+        sec.interval.interpolation = interp
+
+    for f in frames:
+        for lid in layer_ids:
+            le.change_section(int(f), lid, setsec)
+
+
+def _d_interpolation_set(params, scene):
+    """Set the interpolation of the sections starting at the given key frames, on every layer."""
+    frames = params.get("frames") or []
+    if not frames:
+        raise ValueError("frames must list the key frames whose following section to change")
+    interp = _interpolation_enum(params.get("interpolation", "BEZIER"))
+
+    def mod(model, update, updater):
+        le = model.layers_editor()
+        _apply_interpolation(scene, le, frames, interp)
+        le.normalize_sections(scene)
+
+    _checked_modify(scene, "cascadeur-mcp interpolation", mod, update=True)
+    return {
+        "frames": [int(f) for f in frames],
+        "interpolation": str(params.get("interpolation", "BEZIER")).upper(),
+    }
 
 
 def _frames_to_spans(frames):
@@ -2400,6 +2476,24 @@ def _d_viewport_set(params, scene):
     return result
 
 
+def _d_scene_timing(params, scene):
+    """Clip length and gravity per frame (cm/frame^2) of the open scene."""
+    import csc
+
+    out = {"frames": int(scene.data_viewer().get_animation_size())}
+    try:
+        view = csc.app.get_application().current_scene()
+        if params.get("scene_name"):
+            for v in csc.app.get_application().get_scene_manager().scenes():
+                if v.name().startswith(params["scene_name"]):
+                    view = v
+                    break
+        out["gravity_per_frame"] = float(view.gravity_per_frame())
+    except Exception as exc:
+        out["gravity_error"] = f"{type(exc).__name__}: {exc}"
+    return out
+
+
 _HANDLERS.update(
     {
         "rig_rest_dump": _d_rig_rest_dump,
@@ -2408,5 +2502,7 @@ _HANDLERS.update(
         "fulcrum_spans_set": _d_fulcrum_spans_set,
         "glb_import": _d_glb_import,
         "viewport_set": _d_viewport_set,
+        "interpolation_set": _d_interpolation_set,
+        "scene_timing": _d_scene_timing,
     }
 )

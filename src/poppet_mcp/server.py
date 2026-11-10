@@ -217,7 +217,9 @@ def execute_csc_code(code: str) -> dict:
     """Execute Python in Cascadeur's embedded interpreter (typed escape hatch).
 
     Runs through cascadeur-mcp's in-app runtime, so ``csc`` and ``scene`` are available.
-    Returns the expression value (or ``None`` for statements). Prefer ``run_script``
+    Returns ``repr`` (the expression value, or a ``result`` variable your statements
+    set) and ``stdout`` (everything printed, last 20 000 characters). Errors come
+    back with the in-app traceback. Prefer ``run_script``
     if you want the script server's raw response instead, and wrap mutations in
     ``scene.modify_with_session(...)`` to keep undo working.
     """
