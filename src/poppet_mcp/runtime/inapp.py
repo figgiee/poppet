@@ -33,7 +33,20 @@ import traceback
 # Bump when the wire contract or handler semantics change. The MCP client reads
 # this value out of the source text (see runtime/__init__.py) and re-bootstraps
 # the in-app module whenever the running version differs.
-RUNTIME_VERSION = "1.1.1"
+RUNTIME_VERSION = "1.2.0"
+
+# Calls known to take Cascadeur down when made from script (2026.2.3). Refused by
+# every code-running handler; render frames with render_frames instead.
+BLOCKED_CALLS = ("play_to_video_file",)
+
+
+def _refuse_blocked(code):
+    for name in BLOCKED_CALLS:
+        if name in code:
+            raise ValueError(
+                f"{name} crashed Cascadeur 2026.2.3 when called from script; "
+                "use the render_frames tool (still per frame, encoded outside Cascadeur)"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +214,7 @@ def _d_exec_csc(params, scene):
     code = params.get("code", "")
     if not isinstance(code, str):
         raise ValueError("'code' must be a string")
+    _refuse_blocked(code)
     import csc
 
     ns = {"csc": csc, "scene": scene, "_result": None}
@@ -1420,9 +1434,9 @@ def _d_viewport_screenshot(params, scene):
     app = csc.app.get_application()
     # csc.tools.RenderParameters has width / height / samples attributes.
     render_parameters = csc.tools.RenderParameters()
-    render_parameters.width = 1920
-    render_parameters.height = 1080
-    render_parameters.samples = 1
+    render_parameters.width = int(params.get("width") or 1920)
+    render_parameters.height = int(params.get("height") or 1080)
+    render_parameters.samples = int(params.get("samples") or 1)
     view_scene = app.current_scene()  # csc.app.Application.current_scene() -> csc.view.Scene
     tool = app.get_tools_manager().get_tool("RenderToFile")  # csc.app.ToolsManager.get_tool
     tool.take_image(view_scene, render_parameters, normalized)
@@ -2141,3 +2155,258 @@ def _d_ping(params, scene):
 
 
 _HANDLERS["ping"] = _d_ping
+
+
+# ===========================================================================
+# Animation pipeline handlers (1.2): rig dump and audit, pose keys, fulcrum
+# spans, GLB obstacles, viewport camera and mode. Each was first proven as a
+# loose script while blocking Ada's dash vault on the UE5 Quinn rig.
+# ===========================================================================
+
+
+def _objects_by_name(scene):
+    mv = scene.model_viewer()
+    out = {}
+    for oid in mv.get_objects():
+        try:
+            out[mv.get_object_name(oid)] = oid
+        except Exception:
+            continue
+    return out
+
+
+def _global_position(scene, oid, frame):
+    import numpy as np
+
+    mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
+    dv = mv.data_viewer()
+    t = bv.get_behaviour_by_name(oid, "Transform")
+    gid = bv.get_behaviour_data(t, "global_position")
+    return [float(x) for x in np.asarray(dv.get_data_value(gid, frame))]
+
+
+def _d_rig_rest_dump(params, scene):
+    """World positions of every point controller, limb direction and joint at a frame."""
+    frame = int(params.get("frame", 0))
+    types = params.get("types") or ["Point", "Limb Direction", "Joint"]
+    mv = scene.model_viewer()
+    points, errors = {}, {}
+    for name, oid in _objects_by_name(scene).items():
+        try:
+            ty = mv.get_object_type_name(oid)
+        except Exception:
+            continue
+        if ty not in types:
+            continue
+        try:
+            points[name] = [ty] + _global_position(scene, oid, frame)
+        except Exception as exc:
+            errors[name] = f"{type(exc).__name__}: {exc}"
+    return {"frame": frame, "count": len(points), "points": points, "errors": errors}
+
+
+def _d_rig_audit(params, scene):
+    """Inventory a rig: object types, joints against an expected list, contact-point behaviours."""
+    mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
+    expected = params.get("expected_joints") or []
+    contact_points = params.get("contact_points") or []
+    objs = _objects_by_name(scene)
+    by_type = {}
+    names_by_type = {}
+    for name, oid in objs.items():
+        try:
+            ty = mv.get_object_type_name(oid)
+        except Exception:
+            ty = "<unknown>"
+        by_type[ty] = by_type.get(ty, 0) + 1
+        names_by_type.setdefault(ty, []).append(name)
+    joints = set(names_by_type.get("Joint", []))
+    behaviours = {}
+    for name in contact_points:
+        oid = objs.get(name)
+        if oid is None:
+            behaviours[name] = None
+            continue
+        found = {}
+        for bname in ("FulcrumPoint", "Transform"):
+            try:
+                found[bname] = bv.get_behaviour_by_name(oid, bname) is not None
+            except Exception:
+                found[bname] = False
+        behaviours[name] = found
+    return {
+        "object_count": sum(by_type.values()),
+        "types": by_type,
+        "joint_count": len(joints),
+        "missing_joints": sorted(set(expected) - joints),
+        "extra_joints": sorted(joints - set(expected)) if expected else [],
+        "names_by_type": {k: sorted(v)[:400] for k, v in names_by_type.items() if k != "Joint"},
+        "contact_point_behaviours": behaviours,
+    }
+
+
+def _d_pose_keys_set(params, scene):
+    """Key world positions for controller points. ``keys`` is {frame: {name: [x, y, z]}}."""
+    import csc
+    import numpy as np
+
+    keys = params.get("keys") or {}
+    if not isinstance(keys, dict) or not keys:
+        raise ValueError("keys must be a non-empty {frame: {object_name: [x, y, z]}} mapping")
+    frames_total = params.get("frames")
+    reset = bool(params.get("reset", False))
+    objs = _objects_by_name(scene)
+    missing = sorted({n for fk in keys.values() for n in fk if n not in objs})
+    if missing:
+        raise ValueError("unknown objects: " + ", ".join(missing[:20]))
+    if reset and not frames_total:
+        raise ValueError("reset needs frames (the clip length)")
+    written = {"frames": 0, "values": 0}
+
+    def mod(model, update, updater):
+        lv = scene.layers_viewer()
+        le = model.layers_editor()
+        if reset:
+            empty = csc.layers.layer.Section()
+            for lid in lv.all_layer_ids():
+                if not lid.is_null():
+                    le.set_section(empty, int(frames_total), lid)
+            model.fit_animation_size_by_layers()
+            updater.generate_update()
+        layer_ids = [lid for lid in lv.all_layer_ids() if not lid.is_null()]
+        for fs in sorted(keys, key=int):
+            f = int(fs)
+            ids = set()
+            for name, p in keys[fs].items():
+                node = update.get_object_by_id(objs[name]).root_group().node_deep("Position")
+                node.set_value(np.asarray(p, dtype=float), f)
+                ids.add(node.data_id())
+                written["values"] += 1
+            for lid in layer_ids:
+                le.set_fixed_interpolation_or_key_if_need(lid, f, True)
+            model.set_fixed_interpolation_if_need(ids, f)
+            updater.run_update(ids, f)
+            written["frames"] += 1
+        le.normalize_sections(scene)
+
+    _checked_modify(scene, params.get("title") or "cascadeur-mcp pose keys", mod, update=True)
+    return written
+
+
+def _frames_to_spans(frames):
+    spans = []
+    for f in frames:
+        if spans and f == spans[-1][1] + 1:
+            spans[-1][1] = f
+        else:
+            spans.append([f, f])
+    return spans
+
+
+def _d_fulcrum_spans_set(params, scene):
+    """Turn fulcrum points on for frame spans and off elsewhere. spans: {name: [[a, b], ...]}."""
+    spans = params.get("spans") or {}
+    on_value = int(params.get("on_value", 1))
+    objs = _objects_by_name(scene)
+    missing = [n for n in spans if n not in objs]
+    if missing:
+        raise ValueError("unknown objects: " + ", ".join(missing))
+    mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
+    dv = mv.data_viewer()
+    n = int(dv.get_animation_size())
+    no_behaviour = []
+
+    def mod(model, update, updater):
+        de = model.data_editor()
+        for name, ranges in spans.items():
+            b = bv.get_behaviour_by_name(objs[name], "FulcrumPoint")
+            if b is None:
+                no_behaviour.append(name)
+                continue
+            did = bv.get_behaviour_data(b, "fulcrum_state")
+            for f in range(n):
+                on = any(int(a) <= f <= int(z) for a, z in ranges)
+                de.set_data_value(did, f, on_value if on else 0)
+
+    _checked_modify(scene, "cascadeur-mcp fulcrum spans", mod, update=True)
+    readback = {}
+    for name in spans:
+        if name in no_behaviour:
+            continue
+        b = bv.get_behaviour_by_name(objs[name], "FulcrumPoint")
+        did = bv.get_behaviour_data(b, "fulcrum_state")
+        on = [f for f in range(n) if int(dv.get_data_value(did, f))]
+        readback[name] = _frames_to_spans(on)
+    return {"frames": n, "readback": readback, "no_fulcrum_behaviour": no_behaviour}
+
+
+def _d_glb_import(params, scene):
+    """Import a .glb/.gltf (an obstacle or prop) into the scene; returns the new object names."""
+    import csc
+
+    path = params.get("path")
+    if not isinstance(path, str) or not os.path.exists(path):
+        raise ValueError(f"file not found: {path!r}")
+    before = set(_objects_by_name(scene))
+    options = csc.glb.ImportOptions()
+    options.throw_exception = True
+    options.scale_factor = float(params.get("scale_factor", 100.0))
+    csc.glb.process_import(scene, path.replace("\\", "/"), options)
+    mv = scene.model_viewer()
+    new = []
+    for name, oid in _objects_by_name(scene).items():
+        if name not in before:
+            try:
+                new.append({"name": name, "type": mv.get_object_type_name(oid)})
+            except Exception:
+                new.append({"name": name, "type": None})
+    return {"imported": new}
+
+
+def _d_viewport_set(params, scene):
+    """Set the active viewport's camera (position, target), visualiser mode and frame."""
+    import csc
+    import numpy as np
+
+    app = csc.app.get_application()
+    view_scene = app.current_scene()
+    dvp = view_scene.active_viewport().domain_viewport()
+    result = {}
+    mode = params.get("mode")
+    if mode:
+        enum = getattr(csc.view, "ViewportMode", None)
+        if enum is None or not hasattr(enum, mode):
+            options = [m for m in dir(enum) if not m.startswith("_")] if enum else []
+            raise ValueError(f"unknown viewport mode {mode!r}; options: {options}")
+        dvp.set_mode_visualizers(getattr(enum, mode))
+        result["mode"] = mode
+    cam = params.get("camera")
+    if cam:
+        cs = dvp.camera_struct()
+        cs.position = np.asarray(cam["position"], dtype=float)
+        cs.target = np.asarray(cam["target"], dtype=float)
+        dvp.set_camera_struct(cs)
+        cs = dvp.camera_struct()
+        result["camera"] = {
+            "position": [float(x) for x in np.asarray(cs.position)],
+            "target": [float(x) for x in np.asarray(cs.target)],
+        }
+    if params.get("frame") is not None:
+        scene.set_current_frame(int(params["frame"]))
+        result["frame"] = int(params["frame"])
+    return result
+
+
+_HANDLERS.update(
+    {
+        "rig_rest_dump": _d_rig_rest_dump,
+        "rig_audit": _d_rig_audit,
+        "pose_keys_set": _d_pose_keys_set,
+        "fulcrum_spans_set": _d_fulcrum_spans_set,
+        "glb_import": _d_glb_import,
+        "viewport_set": _d_viewport_set,
+    }
+)

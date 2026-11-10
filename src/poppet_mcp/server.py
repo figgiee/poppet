@@ -102,6 +102,11 @@ def run_script(code: str) -> dict:
     Cascadeur caps a call at roughly 30 seconds, so keep scripts short. Prefer
     the typed tools; use this for discovery or one-off operations.
     """
+    if "play_to_video_file" in code:
+        raise ValueError(
+            "play_to_video_file crashed Cascadeur 2026.2.3 when called from script; "
+            "use render_frames (still per frame, encoded outside Cascadeur)"
+        )
     return _connection().run_script(code)
 
 
@@ -637,6 +642,10 @@ def csc_schema() -> str:
 # ----------------------------------------------------------------------------
 # Entry point
 # ----------------------------------------------------------------------------
+
+
+# Pipeline tools register themselves on ``mcp`` at import time.
+from poppet_mcp import pipeline_tools  # noqa: E402,F401
 
 
 def main() -> None:
