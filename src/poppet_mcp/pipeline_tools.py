@@ -802,4 +802,4 @@ def render_frames(
 
 
 # Measurement and lint tools build on the helpers above.
-from poppet_mcp import motion_checks  # noqa: E402,F401
+from poppet_mcp import motion_checks, take_tools  # noqa: E402,F401

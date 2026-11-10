@@ -367,3 +367,35 @@ def test_inapp_exec_captures_stdout():
     assert reply["status"] == "success"
     assert reply["result"]["stdout"] == "hi\n"
     assert reply["result"]["repr"] == "42"
+
+
+def test_retime_moves_keys_and_resamples():
+    from poppet_mcp.take_tools import retime_positions
+
+    take = {0: {"p": [0.0, 0.0, 0.0]}, 10: {"p": [0.0, 0.0, 100.0]}}
+    assert sorted(retime_positions(take, 2.0, every_frame=False)) == [0, 20]
+    dense = {f: {"p": [0.0, 0.0, float(f)]} for f in range(0, 9)}
+    out = retime_positions(dense, 0.25, every_frame=True)
+    assert sorted(out) == [0, 1, 2] and out[1]["p"][2] == 4.0
+
+
+def test_mirror_swaps_sides_and_reflects():
+    from poppet_mcp.take_tools import mirror_positions
+
+    take = {
+        0: {
+            "hand_MainPoint_l": [20.0, 90.0, 5.0],
+            "hand_MainPoint_r": [-30.0, 100.0, 0.0],
+            "pelvis_MainPoint": [2.0, 95.0, 0.0],
+        }
+    }
+    out = mirror_positions(take)[0]
+    assert out["hand_MainPoint_l"] == [30.0, 100.0, 0.0]
+    assert out["hand_MainPoint_r"] == [-20.0, 90.0, 5.0]
+    assert out["pelvis_MainPoint"] == [-2.0, 95.0, 0.0]
+
+
+def test_scale_spans():
+    from poppet_mcp.take_tools import _scale_spans
+
+    assert _scale_spans({"foot": [[4, 8]], "hand": []}, 0.5, 0) == {"foot": [[2, 4]]}

@@ -2506,3 +2506,71 @@ _HANDLERS.update(
         "scene_timing": _d_scene_timing,
     }
 )
+
+
+def _section_interpolation(layer, frame):
+    for getter in ("actual_section", "section"):
+        fn = getattr(layer, getter, None)
+        if fn is None:
+            continue
+        try:
+            sec = fn(frame)
+            return str(sec.interval.interpolation).split(".")[-1]
+        except Exception:
+            continue
+    return None
+
+
+def _d_keys_report(params, scene):
+    """Every layer's key frames and the interpolation of the section after each key."""
+    lv = scene.layers_viewer()
+    layers = []
+    union = set()
+    for lid in lv.all_layer_ids():
+        if lid.is_null():
+            continue
+        layer = lv.layer(lid)
+        try:
+            name = str(layer.header.name)
+        except Exception:
+            name = _id_str(lid)
+        frames = [int(f) for f in layer.key_frame_indices()]
+        union.update(frames)
+        layers.append(
+            {
+                "id": _id_str(lid),
+                "name": name,
+                "key_frames": frames,
+                "interpolation": {str(f): _section_interpolation(layer, f) for f in frames},
+            }
+        )
+    return {
+        "frames_count": int(scene.data_viewer().get_animation_size()),
+        "key_frames": sorted(union),
+        "layers": layers,
+    }
+
+
+def _d_fulcrum_spans_get(params, scene):
+    """Frame spans where each named point's fulcrum is on."""
+    objs = _objects_by_name(scene)
+    mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
+    dv = mv.data_viewer()
+    n = int(dv.get_animation_size())
+    out = {}
+    for name in params.get("points") or []:
+        oid = objs.get(name)
+        if oid is None:
+            out[name] = None
+            continue
+        b = bv.get_behaviour_by_name(oid, "FulcrumPoint")
+        if b is None:
+            out[name] = None
+            continue
+        did = bv.get_behaviour_data(b, "fulcrum_state")
+        out[name] = _frames_to_spans([f for f in range(n) if int(dv.get_data_value(did, f))])
+    return {"frames": n, "spans": out}
+
+
+_HANDLERS.update({"keys_report": _d_keys_report, "fulcrum_spans_get": _d_fulcrum_spans_get})
