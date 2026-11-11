@@ -489,6 +489,9 @@ PHYSICS_ACTIONS = {
     "autophysics_snap": "AutoPhysicsTool.Snap to Auto Physics",
     "collision_cleaning": "FixCollisionsTool.Collision Penetration Cleaning",
     "autoposing": "AutoPosingTool.AutoPosing",
+    "fulcrum_motion_cleaning": "View.FixFoot",
+    "fulcrum_motion_cleaning_keep_keys": "View.FixFoot_KeepKeyFrames",
+    "freeze_physics": "AutoPhysicsTool.Switch Frozen Auto Physics",
 }
 
 
@@ -558,6 +561,16 @@ def _wait_solver(offset: int, timeout: float, quiet_sec: float = 1.5) -> dict:
 
 
 @mcp.tool()
+def select_interval(first: int, last: int) -> dict:
+    """Select frames ``first``..``last`` on every animation layer of the timeline.
+
+    Interval tools act on this selection: Fulcrum Motion Cleaning, AutoPhysics with
+    "Work on interval", Interval edit mode, mirror on interval, cycles.
+    """
+    return _scall("timeline_select", first=first, last=last)
+
+
+@mcp.tool()
 def list_dialogs() -> dict:
     """Visible Cascadeur dialogs and their button labels (a dialog can block script actions)."""
     return _scall("dialogs_list")
@@ -583,7 +596,9 @@ def physics_pass(
 
     ``steps`` run in order from: ``autophysics_on`` (toggle AutoPhysics and its
     green preview), ``autophysics_snap`` (write the physics result into the
-    animation), ``collision_cleaning`` and ``autoposing``. Default:
+    animation), ``collision_cleaning``, ``fulcrum_motion_cleaning`` (Cascadeur's
+    FixFoot: removes hand and foot sliding inside fulcrum spans),
+    ``freeze_physics`` (toggle frozen AutoPhysics) and ``autoposing``. Default:
     ``["autophysics_snap", "collision_cleaning"]``.
 
     Snap opens Cascadeur's "Apply AutoPhysics" dialog; the tool answers it with
@@ -602,6 +617,9 @@ def physics_pass(
     if apply_to not in SNAP_ANSWERS:
         raise ValueError(f"apply_to must be one of {sorted(SNAP_ANSWERS)}")
     before = _sample(objects, frame_start, frame_end, frame_step)
+    # Interval tools (Fulcrum Motion Cleaning, AutoPhysics "Work on interval") act on
+    # the timeline selection, so select the pass's range on every layer first.
+    _scall("timeline_select", first=frame_start, last=frame_end)
     report: dict[str, Any] = {"steps": []}
     for step in steps:
         offset = _log_offset()
@@ -878,4 +896,4 @@ def render_frames(
 
 
 # Measurement and lint tools build on the helpers above.
-from poppet_mcp import motion_checks, take_tools  # noqa: E402,F401
+from poppet_mcp import motion_checks, rig_tools, take_tools  # noqa: E402,F401
