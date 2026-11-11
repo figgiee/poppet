@@ -655,4 +655,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # ``python -m poppet_mcp.server`` runs this file as ``__main__``, a separate module
+    # object from ``poppet_mcp.server``. The pipeline tools register on the imported
+    # module's ``mcp``, so serve that one or they would be missing from the server.
+    from poppet_mcp import server as _server
+
+    _server.main()
