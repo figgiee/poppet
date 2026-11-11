@@ -333,14 +333,24 @@ def block_poses(
 
 
 @mcp.tool()
-def set_fulcrum_spans(spans: dict[str, list[list[int]]]) -> dict:
+def set_fulcrum_spans(spans: dict[str, list[list[int]]], key_boundaries: bool = True) -> dict:
     """Pin contacts: turn each point's fulcrum on for the given frame spans, off elsewhere.
 
     ``spans`` maps a controller point to inclusive ``[first, last]`` frame ranges,
     e.g. ``{"foot_MainPoint_l": [[12, 16]], "hand_MainPoint_l": [[25, 29]]}``.
     AutoPhysics then treats those points as fixed supports. The reply reads the
     state back per frame so you can confirm what Cascadeur stored.
+
+    Cascadeur changes fulcrum state only at keys, so with ``key_boundaries`` (the
+    default) the tool first adds keys at each span's first frame and the frame
+    after its last, keeping the pose at those frames.
     """
+    if key_boundaries:
+        # Fulcrum state only changes at keys (verified live 2026-11-11: a 0-12 span
+        # was stored as 0-16, up to the next key). Key each span's first frame and
+        # the frame after its last, keeping the pose there, so the span holds.
+        boundaries = sorted({f for rs in spans.values() for a, b in rs for f in (a, b + 1)})
+        _scall("keys_add", frames=boundaries)
     result = _scall("fulcrum_spans_set", spans=spans)
     requested = {n: sorted(map(list, r)) for n, r in spans.items()}
     mismatched = {
@@ -502,61 +512,124 @@ def _max_delta(a: dict[str, list], b: dict[str, list]) -> dict[str, float]:
     return {n: round(max((math.dist(p, q) for p, q in zip(a[n], b[n])), default=0.0), 3) for n in a}
 
 
+SNAP_DIALOG = "Apply AutoPhysics"
+SNAP_ANSWERS = {"all_frames": "All Frames", "only_keys": "Only keys"}
+SOLVER_DONE = "Autophysics core finished"
+
+
+def _log_offset() -> int:
+    return CASCADEUR_LOG.stat().st_size if CASCADEUR_LOG.exists() else 0
+
+
+def _log_since(offset: int) -> list[str]:
+    if not CASCADEUR_LOG.exists():
+        return []
+    with CASCADEUR_LOG.open("rb") as handle:
+        handle.seek(offset)
+        return handle.read().decode("utf-8", errors="replace").splitlines()
+
+
+def _wait_solver(offset: int, timeout: float, quiet_sec: float = 1.5) -> dict:
+    """Wait for Cascadeur's log to report the solver finished and then go quiet."""
+    deadline = time.monotonic() + timeout
+    finished_at = None
+    lines: list[str] = []
+    while time.monotonic() < deadline:
+        lines = _log_since(offset)
+        done = [i for i, line in enumerate(lines) if SOLVER_DONE in line]
+        if done:
+            if finished_at is None or done[-1] != finished_at[0]:
+                finished_at = (done[-1], time.monotonic())
+            elif time.monotonic() - finished_at[1] >= quiet_sec:
+                break
+        time.sleep(0.25)
+    statuses = [
+        line.split("AutoPhysics status:", 1)[1].strip()
+        for line in lines
+        if "AutoPhysics status:" in line
+    ]
+    return {
+        "solver_finished": finished_at is not None,
+        "solver_runs": sum(SOLVER_DONE in line for line in lines),
+        "non_converged": [
+            s for s in statuses if "CONVERGENCE" not in s and "USER_SUCCESS" not in s
+        ],
+    }
+
+
+@mcp.tool()
+def list_dialogs() -> dict:
+    """Visible Cascadeur dialogs and their button labels (a dialog can block script actions)."""
+    return _scall("dialogs_list")
+
+
+@mcp.tool()
+def answer_dialog(title: str, button: str) -> dict:
+    """Press ``button`` in the visible dialog titled ``title``. Use list_dialogs first."""
+    return _scall("dialog_answer", title=title, button=button)
+
+
 @mcp.tool()
 def physics_pass(
     objects: list[str],
     frame_start: int,
     frame_end: int,
     steps: list[str] | None = None,
+    apply_to: str = "all_frames",
     frame_step: int = 1,
-    settle_timeout_sec: float = 20.0,
+    timeout_sec: float = 30.0,
 ) -> dict:
     """Run Cascadeur's physics tools and report what they changed.
 
-    ``steps`` are run in order from: ``autophysics_on`` (toggle AutoPhysics),
-    ``autophysics_snap`` (bake the physics result into keys), ``collision_cleaning``
-    and ``autoposing``. Defaults to ``["autophysics_snap", "collision_cleaning"]``.
+    ``steps`` run in order from: ``autophysics_on`` (toggle AutoPhysics and its
+    green preview), ``autophysics_snap`` (write the physics result into the
+    animation), ``collision_cleaning`` and ``autoposing``. Default:
+    ``["autophysics_snap", "collision_cleaning"]``.
 
-    ``objects`` (up to 32 controller points, e.g. pelvis, hands, feet) are sampled
-    over the range before and after. The native actions have no completion signal,
-    so the tool re-samples until two reads match or the timeout passes and reports
-    ``settled``. Per-object ``max_change_cm`` says how far physics moved each
-    point. A change is not proof of quality: render the range and look.
+    Snap opens Cascadeur's "Apply AutoPhysics" dialog; the tool answers it with
+    ``apply_to``: ``all_frames`` (bake every frame, for mocap and final passes) or
+    ``only_keys`` (update the existing keys, for blocking).
 
-    Prerequisites set in the UI: the frame interval AutoPhysics works on and its
-    strength. The Python API exposes no setter for those panels in 2026.2.3.
+    Completion comes from Cascadeur's own log ("Autophysics core finished"), not
+    from guessing. ``objects`` (up to 32 points) are sampled before and after and
+    ``max_change_cm`` says how far physics moved each. A change is not proof of
+    quality: render the range and look.
     """
     steps = steps or ["autophysics_snap", "collision_cleaning"]
     unknown = [s for s in steps if s not in PHYSICS_ACTIONS]
     if unknown:
         raise ValueError(f"unknown steps {unknown}; options: {sorted(PHYSICS_ACTIONS)}")
+    if apply_to not in SNAP_ANSWERS:
+        raise ValueError(f"apply_to must be one of {sorted(SNAP_ANSWERS)}")
     before = _sample(objects, frame_start, frame_end, frame_step)
-    invoked = []
+    report: dict[str, Any] = {"steps": []}
     for step in steps:
+        offset = _log_offset()
         _scall("call_action", action_id=PHYSICS_ACTIONS[step])
-        invoked.append(PHYSICS_ACTIONS[step])
-    deadline = time.monotonic() + settle_timeout_sec
-    previous = None
-    settled = False
-    after = before
-    while time.monotonic() < deadline:
-        time.sleep(1.0)
-        after = _sample(objects, frame_start, frame_end, frame_step)
-        if previous is not None and all(v == 0 for v in _max_delta(previous, after).values()):
-            settled = True
-            break
-        previous = after
+        entry: dict[str, Any] = {"step": step, "action": PHYSICS_ACTIONS[step]}
+        if step == "autophysics_snap":
+            pressed = 0
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline and not pressed:
+                time.sleep(0.25)
+                pressed = _scall("dialog_answer", title=SNAP_DIALOG, button=SNAP_ANSWERS[apply_to])[
+                    "pressed"
+                ]
+            entry["dialog_answered"] = SNAP_ANSWERS[apply_to] if pressed else None
+        entry.update(_wait_solver(offset, timeout_sec))
+        report["steps"].append(entry)
+    after = _sample(objects, frame_start, frame_end, frame_step)
     change = _max_delta(before, after)
-    return {
-        "invoked": invoked,
-        "settled": settled,
-        "max_change_cm": change,
-        "changed": any(v > 0.01 for v in change.values()),
-        "note": (
-            "Settled means two consecutive samples matched; "
-            "it does not certify convergence or balance."
-        ),
-    }
+    open_dialogs = _scall("dialogs_list")["dialogs"]
+    report.update(
+        max_change_cm=change,
+        changed=any(v > 0.01 for v in change.values()),
+        keys_after=len(_scall("keys_report")["key_frames"]),
+        open_dialogs=open_dialogs,
+    )
+    if open_dialogs:
+        report["warning"] = "A Cascadeur dialog is still open and may be waiting for input."
+    return report
 
 
 # ----------------------------------------------------------------------------
@@ -682,6 +755,7 @@ def render_frames(
     encode_mp4: bool = True,
     contact_sheet_every: int = 0,
     frame_timeout_sec: float = 15.0,
+    clear_selection: bool = True,
 ) -> dict:
     """Render a frame range to PNG stills, then an MP4 and a contact sheet, outside Cascadeur.
 
@@ -705,6 +779,8 @@ def render_frames(
     if not (camera_position and camera_target) and camera_preset and follow_point:
         samples = _sample([follow_point], frame_start, frame_end, frame_step)[follow_point]
         focus_track = dict(zip(frames, samples))
+    if clear_selection:  # selected controllers and their gizmo draw even in View mode
+        _scall("selection_set", object_names=[])
     _scall("viewport_set", mode=mode)
     written: list[str] = []
     failed: list[int] = []

@@ -2300,6 +2300,15 @@ def _d_pose_keys_set(params, scene):
         lv = scene.layers_viewer()
         le = model.layers_editor()
         if reset:
+            # Remove every existing key except frame 0 first. Setting the clip length
+            # alone leaves old keys pinning their old poses (found live 2026-11-11:
+            # a retimed take still held its pre-retime apex key).
+            for lid in lv.all_layer_ids():
+                if lid.is_null():
+                    continue
+                for f in list(lv.layer(lid).key_frame_indices()):
+                    if int(f) != 0:
+                        le.unset_section(int(f), lid)
             empty = csc.layers.layer.Section()
             for lid in lv.all_layer_ids():
                 if not lid.is_null():
@@ -2574,3 +2583,83 @@ def _d_fulcrum_spans_get(params, scene):
 
 
 _HANDLERS.update({"keys_report": _d_keys_report, "fulcrum_spans_get": _d_fulcrum_spans_get})
+
+
+def _d_keys_add(params, scene):
+    """Add a key on every layer at each frame, keeping the current pose there."""
+    frames = sorted({int(f) for f in params.get("frames") or []})
+    n = int(scene.data_viewer().get_animation_size())
+    frames = [f for f in frames if 0 <= f < n]
+
+    def mod(model, update, updater):
+        lv = scene.layers_viewer()
+        le = model.layers_editor()
+        for lid in lv.all_layer_ids():
+            if lid.is_null():
+                continue
+            for f in frames:
+                le.set_fixed_interpolation_or_key_if_need(lid, f, True)
+        le.normalize_sections(scene)
+
+    if frames:
+        _checked_modify(scene, "cascadeur-mcp add keys", mod, update=True)
+    return {"keyed_frames": frames}
+
+
+_HANDLERS["keys_add"] = _d_keys_add
+
+
+def _quick_windows(title=None):
+    import shiboken6
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtQuick import QQuickWindow
+
+    out = []
+    for w in QGuiApplication.instance().allWindows():
+        if not w.isVisible() or (title is not None and w.title() != title):
+            continue
+        try:
+            out.append(
+                (w.title(), shiboken6.wrapInstance(shiboken6.getCppPointer(w)[0], QQuickWindow))
+            )
+        except Exception:
+            continue
+    return out
+
+
+def _quick_buttons(item, found):
+    cn = item.metaObject().className()
+    if "Button" in cn and item.property("text"):
+        found.append(item)
+    for child in item.childItems():
+        _quick_buttons(child, found)
+    return found
+
+
+def _d_dialogs_list(params, scene):
+    """Visible Cascadeur dialogs (non-main windows) and their button labels."""
+    out = []
+    for title, qw in _quick_windows():
+        if title.endswith("- Cascadeur") or not title:
+            continue
+        texts = [b.property("text") for b in _quick_buttons(qw.contentItem(), [])]
+        out.append({"title": title, "buttons": texts})
+    return {"dialogs": out}
+
+
+def _d_dialog_answer(params, scene):
+    """Press the button labelled ``button`` in every visible dialog titled ``title``."""
+    from PySide6.QtCore import QMetaObject
+
+    title, label = params.get("title"), params.get("button")
+    pressed = 0
+    for _, qw in _quick_windows(title):
+        for b in _quick_buttons(qw.contentItem(), []):
+            if b.property("text") == label:
+                QMetaObject.invokeMethod(b, "clicked")
+                pressed += 1
+                break
+    return {"title": title, "button": label, "pressed": pressed}
+
+
+_HANDLERS.update({"dialogs_list": _d_dialogs_list, "dialog_answer": _d_dialog_answer})
