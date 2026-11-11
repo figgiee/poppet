@@ -33,7 +33,20 @@ import traceback
 # Bump when the wire contract or handler semantics change. The MCP client reads
 # this value out of the source text (see runtime/__init__.py) and re-bootstraps
 # the in-app module whenever the running version differs.
-RUNTIME_VERSION = "1.1.1"
+RUNTIME_VERSION = "1.2.0"
+
+# Calls known to take Cascadeur down when made from script (2026.2.3). Refused by
+# every code-running handler; render frames with render_frames instead.
+BLOCKED_CALLS = ("play_to_video_file",)
+
+
+def _refuse_blocked(code):
+    for name in BLOCKED_CALLS:
+        if name in code:
+            raise ValueError(
+                f"{name} crashed Cascadeur 2026.2.3 when called from script; "
+                "use the render_frames tool (still per frame, encoded outside Cascadeur)"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +102,8 @@ def _dispatch_legacy(message, scene):
     if handler is None:
         return {"status": "error", "message": f"unknown command: {cmd_type!r}"}
     try:
+        if params.get("scene_name"):
+            scene = _scene_by_name(params["scene_name"])
         result = handler(params, scene)
         return {"status": "success", "result": result}
     except Exception as e:
@@ -97,6 +112,20 @@ def _dispatch_legacy(message, scene):
             "message": f"{type(e).__name__}: {e}",
             "traceback": traceback.format_exc(),
         }
+
+
+def _scene_by_name(name):
+    """Domain scene of the open tab named ``name`` (exact, else unique prefix); no tab switch."""
+    import csc
+
+    views = list(csc.app.get_application().get_scene_manager().scenes())
+    names = [v.name() for v in views]
+    matches = [v for v in views if v.name() == name] or [
+        v for v in views if v.name().startswith(name)
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"scene {name!r} matched {len(matches)} open scenes; open: {names}")
+    return matches[0].domain_scene()
 
 
 def _safe_repr(obj):
@@ -201,14 +230,27 @@ def _d_exec_csc(params, scene):
     code = params.get("code", "")
     if not isinstance(code, str):
         raise ValueError("'code' must be a string")
+    _refuse_blocked(code)
     import csc
 
+    import contextlib
+    import io
+
     ns = {"csc": csc, "scene": scene, "_result": None}
-    try:
-        ns["_result"] = eval(code, ns)
-    except SyntaxError:
-        exec(code, ns)
-    return {"repr": _safe_repr(ns.get("_result"))}
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+        try:
+            ns["_result"] = eval(code, ns)
+        except SyntaxError:
+            exec(code, ns)
+    if ns.get("_result") is None and "result" in ns:
+        ns["_result"] = ns["result"]
+    out = buffer.getvalue()
+    return {
+        "repr": _safe_repr(ns.get("_result")),
+        "stdout": out[-20000:],
+        "stdout_truncated": len(out) > 20000,
+    }
 
 
 def _d_call_action(params, scene):
@@ -252,7 +294,8 @@ def _d_scene_info(params, scene):
     # View-scene name + animation_boundary live on csc.view.Scene, not domain scene.
     try:
         view_scene = csc.app.get_application().current_scene()
-        info["scene_name"] = view_scene.name()
+        info["scene_name"] = params.get("scene_name") or view_scene.name()
+        info["current_tab"] = view_scene.name()
     except Exception as e:
         info["scene_name_error"] = str(e)
 
@@ -1420,9 +1463,9 @@ def _d_viewport_screenshot(params, scene):
     app = csc.app.get_application()
     # csc.tools.RenderParameters has width / height / samples attributes.
     render_parameters = csc.tools.RenderParameters()
-    render_parameters.width = 1920
-    render_parameters.height = 1080
-    render_parameters.samples = 1
+    render_parameters.width = int(params.get("width") or 1920)
+    render_parameters.height = int(params.get("height") or 1080)
+    render_parameters.samples = int(params.get("samples") or 1)
     view_scene = app.current_scene()  # csc.app.Application.current_scene() -> csc.view.Scene
     tool = app.get_tools_manager().get_tool("RenderToFile")  # csc.app.ToolsManager.get_tool
     tool.take_image(view_scene, render_parameters, normalized)
@@ -2141,3 +2184,978 @@ def _d_ping(params, scene):
 
 
 _HANDLERS["ping"] = _d_ping
+
+
+# ===========================================================================
+# Animation pipeline handlers (1.2): rig dump and audit, pose keys, fulcrum
+# spans, GLB obstacles, viewport camera and mode. Each was first proven as a
+# loose script while blocking Ada's dash vault on the UE5 Quinn rig.
+# ===========================================================================
+
+
+def _objects_by_name(scene):
+    mv = scene.model_viewer()
+    out = {}
+    for oid in mv.get_objects():
+        try:
+            out[mv.get_object_name(oid)] = oid
+        except Exception:
+            continue
+    return out
+
+
+def _global_position(scene, oid, frame):
+    import numpy as np
+
+    mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
+    dv = mv.data_viewer()
+    t = bv.get_behaviour_by_name(oid, "Transform")
+    gid = bv.get_behaviour_data(t, "global_position")
+    return [float(x) for x in np.asarray(dv.get_data_value(gid, frame))]
+
+
+def _d_rig_rest_dump(params, scene):
+    """World positions of every point controller, limb direction and joint at a frame."""
+    frame = int(params.get("frame", 0))
+    types = params.get("types") or ["Point", "Limb Direction", "Joint"]
+    mv = scene.model_viewer()
+    points, errors = {}, {}
+    for name, oid in _objects_by_name(scene).items():
+        try:
+            ty = mv.get_object_type_name(oid)
+        except Exception:
+            continue
+        if ty not in types:
+            continue
+        try:
+            points[name] = [ty] + _global_position(scene, oid, frame)
+        except Exception as exc:
+            errors[name] = f"{type(exc).__name__}: {exc}"
+    return {"frame": frame, "count": len(points), "points": points, "errors": errors}
+
+
+def _d_rig_audit(params, scene):
+    """Inventory a rig: object types, joints against an expected list, contact-point behaviours."""
+    mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
+    expected = params.get("expected_joints") or []
+    contact_points = params.get("contact_points") or []
+    objs = _objects_by_name(scene)
+    by_type = {}
+    names_by_type = {}
+    for name, oid in objs.items():
+        try:
+            ty = mv.get_object_type_name(oid)
+        except Exception:
+            ty = "<unknown>"
+        by_type[ty] = by_type.get(ty, 0) + 1
+        names_by_type.setdefault(ty, []).append(name)
+    joints = set(names_by_type.get("Joint", []))
+    behaviours = {}
+    for name in contact_points:
+        oid = objs.get(name)
+        if oid is None:
+            behaviours[name] = None
+            continue
+        found = {}
+        for bname in ("FulcrumPoint", "Transform"):
+            try:
+                found[bname] = bv.get_behaviour_by_name(oid, bname) is not None
+            except Exception:
+                found[bname] = False
+        behaviours[name] = found
+    return {
+        "object_count": sum(by_type.values()),
+        "types": by_type,
+        "joint_count": len(joints),
+        "missing_joints": sorted(set(expected) - joints),
+        "extra_joints": sorted(joints - set(expected)) if expected else [],
+        "names_by_type": {k: sorted(v)[:400] for k, v in names_by_type.items() if k != "Joint"},
+        "contact_point_behaviours": behaviours,
+    }
+
+
+def _d_pose_keys_set(params, scene):
+    """Key world positions for controller points. ``keys`` is {frame: {name: [x, y, z]}}."""
+    import csc
+    import numpy as np
+
+    keys = params.get("keys") or {}
+    if not isinstance(keys, dict) or not keys:
+        raise ValueError("keys must be a non-empty {frame: {object_name: [x, y, z]}} mapping")
+    frames_total = params.get("frames")
+    reset = bool(params.get("reset", False))
+    interp_name = params.get("interpolation")
+    interp = _interpolation_enum(interp_name) if interp_name else None
+    objs = _objects_by_name(scene)
+    missing = sorted({n for fk in keys.values() for n in fk if n not in objs})
+    if missing:
+        raise ValueError("unknown objects: " + ", ".join(missing[:20]))
+    if reset and not frames_total:
+        raise ValueError("reset needs frames (the clip length)")
+    written = {"frames": 0, "values": 0}
+
+    def mod(model, update, updater):
+        lv = scene.layers_viewer()
+        le = model.layers_editor()
+        if reset:
+            # Remove every existing key except frame 0 first. Setting the clip length
+            # alone leaves old keys pinning their old poses (found live 2026-11-11:
+            # a retimed take still held its pre-retime apex key).
+            for lid in lv.all_layer_ids():
+                if lid.is_null():
+                    continue
+                for f in list(lv.layer(lid).key_frame_indices()):
+                    if int(f) != 0:
+                        le.unset_section(int(f), lid)
+            empty = csc.layers.layer.Section()
+            for lid in lv.all_layer_ids():
+                if not lid.is_null():
+                    le.set_section(empty, int(frames_total), lid)
+            model.fit_animation_size_by_layers()
+            updater.generate_update()
+        layer_ids = [lid for lid in lv.all_layer_ids() if not lid.is_null()]
+        for fs in sorted(keys, key=int):
+            f = int(fs)
+            ids = set()
+            for name, p in keys[fs].items():
+                node = update.get_object_by_id(objs[name]).root_group().node_deep("Position")
+                node.set_value(np.asarray(p, dtype=float), f)
+                ids.add(node.data_id())
+                written["values"] += 1
+            for lid in layer_ids:
+                le.set_fixed_interpolation_or_key_if_need(lid, f, True)
+            model.set_fixed_interpolation_if_need(ids, f)
+            updater.run_update(ids, f)
+            written["frames"] += 1
+        if interp is not None:
+            _apply_interpolation(scene, le, [int(f) for f in keys], interp)
+            written["interpolation"] = str(interp_name).upper()
+        le.normalize_sections(scene)
+
+    _checked_modify(scene, params.get("title") or "cascadeur-mcp pose keys", mod, update=True)
+    return written
+
+
+def _interpolation_enum(name):
+    import csc
+
+    enum = csc.layers.layer.Interpolation
+    key = str(name).upper()
+    if not hasattr(enum, key):
+        options = [m for m in dir(enum) if not m.startswith("_")]
+        raise ValueError(f"unknown interpolation {name!r}; options: {options}")
+    return getattr(enum, key)
+
+
+def _apply_interpolation(scene, le, frames, interp):
+    lv = scene.layers_viewer()
+    layer_ids = [lid for lid in lv.all_layer_ids() if not lid.is_null()]
+
+    def setsec(sec):
+        sec.interval.interpolation = interp
+
+    for f in frames:
+        for lid in layer_ids:
+            le.change_section(int(f), lid, setsec)
+
+
+def _d_interpolation_set(params, scene):
+    """Set the interpolation of the sections starting at the given key frames, on every layer."""
+    frames = params.get("frames") or []
+    if not frames:
+        raise ValueError("frames must list the key frames whose following section to change")
+    interp = _interpolation_enum(params.get("interpolation", "BEZIER"))
+
+    def mod(model, update, updater):
+        le = model.layers_editor()
+        _apply_interpolation(scene, le, frames, interp)
+        le.normalize_sections(scene)
+
+    _checked_modify(scene, "cascadeur-mcp interpolation", mod, update=True)
+    return {
+        "frames": [int(f) for f in frames],
+        "interpolation": str(params.get("interpolation", "BEZIER")).upper(),
+    }
+
+
+def _frames_to_spans(frames):
+    spans = []
+    for f in frames:
+        if spans and f == spans[-1][1] + 1:
+            spans[-1][1] = f
+        else:
+            spans.append([f, f])
+    return spans
+
+
+def _d_fulcrum_spans_set(params, scene):
+    """Turn fulcrum points on for frame spans and off elsewhere. spans: {name: [[a, b], ...]}."""
+    spans = params.get("spans") or {}
+    on_value = int(params.get("on_value", 1))
+    objs = _objects_by_name(scene)
+    missing = [n for n in spans if n not in objs]
+    if missing:
+        raise ValueError("unknown objects: " + ", ".join(missing))
+    mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
+    dv = mv.data_viewer()
+    n = int(dv.get_animation_size())
+    no_behaviour = []
+
+    def mod(model, update, updater):
+        de = model.data_editor()
+        for name, ranges in spans.items():
+            b = bv.get_behaviour_by_name(objs[name], "FulcrumPoint")
+            if b is None:
+                no_behaviour.append(name)
+                continue
+            did = bv.get_behaviour_data(b, "fulcrum_state")
+            for f in range(n):
+                on = any(int(a) <= f <= int(z) for a, z in ranges)
+                de.set_data_value(did, f, on_value if on else 0)
+
+    _checked_modify(scene, "cascadeur-mcp fulcrum spans", mod, update=True)
+    readback = {}
+    for name in spans:
+        if name in no_behaviour:
+            continue
+        b = bv.get_behaviour_by_name(objs[name], "FulcrumPoint")
+        did = bv.get_behaviour_data(b, "fulcrum_state")
+        on = [f for f in range(n) if int(dv.get_data_value(did, f))]
+        readback[name] = _frames_to_spans(on)
+    return {"frames": n, "readback": readback, "no_fulcrum_behaviour": no_behaviour}
+
+
+def _d_glb_import(params, scene):
+    """Import a .glb/.gltf (an obstacle or prop) into the scene; returns the new object names."""
+    import csc
+
+    path = params.get("path")
+    if not isinstance(path, str) or not os.path.exists(path):
+        raise ValueError(f"file not found: {path!r}")
+    before = set(_objects_by_name(scene))
+    options = csc.glb.ImportOptions()
+    options.throw_exception = True
+    options.scale_factor = float(params.get("scale_factor", 100.0))
+    csc.glb.process_import(scene, path.replace("\\", "/"), options)
+    mv = scene.model_viewer()
+    new = []
+    for name, oid in _objects_by_name(scene).items():
+        if name not in before:
+            try:
+                new.append({"name": name, "type": mv.get_object_type_name(oid)})
+            except Exception:
+                new.append({"name": name, "type": None})
+    return {"imported": new}
+
+
+def _d_viewport_set(params, scene):
+    """Set the active viewport's camera (position, target), visualiser mode and frame."""
+    import csc
+    import numpy as np
+
+    app = csc.app.get_application()
+    view_scene = app.current_scene()
+    dvp = view_scene.active_viewport().domain_viewport()
+    result = {}
+    mode = params.get("mode")
+    if mode:
+        enum = getattr(csc.view, "ViewportMode", None)
+        if enum is None or not hasattr(enum, mode):
+            options = [m for m in dir(enum) if not m.startswith("_")] if enum else []
+            raise ValueError(f"unknown viewport mode {mode!r}; options: {options}")
+        dvp.set_mode_visualizers(getattr(enum, mode))
+        result["mode"] = mode
+    cam = params.get("camera")
+    if cam:
+        cs = dvp.camera_struct()
+        cs.position = np.asarray(cam["position"], dtype=float)
+        cs.target = np.asarray(cam["target"], dtype=float)
+        dvp.set_camera_struct(cs)
+        cs = dvp.camera_struct()
+        result["camera"] = {
+            "position": [float(x) for x in np.asarray(cs.position)],
+            "target": [float(x) for x in np.asarray(cs.target)],
+        }
+    if params.get("frame") is not None:
+        scene.set_current_frame(int(params["frame"]))
+        result["frame"] = int(params["frame"])
+    return result
+
+
+def _d_scene_timing(params, scene):
+    """Clip length and gravity per frame (cm/frame^2) of the open scene."""
+    import csc
+
+    out = {"frames": int(scene.data_viewer().get_animation_size())}
+    try:
+        view = csc.app.get_application().current_scene()
+        if params.get("scene_name"):
+            for v in csc.app.get_application().get_scene_manager().scenes():
+                if v.name().startswith(params["scene_name"]):
+                    view = v
+                    break
+        out["gravity_per_frame"] = float(view.gravity_per_frame())
+    except Exception as exc:
+        out["gravity_error"] = f"{type(exc).__name__}: {exc}"
+    return out
+
+
+_HANDLERS.update(
+    {
+        "rig_rest_dump": _d_rig_rest_dump,
+        "rig_audit": _d_rig_audit,
+        "pose_keys_set": _d_pose_keys_set,
+        "fulcrum_spans_set": _d_fulcrum_spans_set,
+        "glb_import": _d_glb_import,
+        "viewport_set": _d_viewport_set,
+        "interpolation_set": _d_interpolation_set,
+        "scene_timing": _d_scene_timing,
+    }
+)
+
+
+def _section_interpolation(layer, frame):
+    for getter in ("actual_section", "section"):
+        fn = getattr(layer, getter, None)
+        if fn is None:
+            continue
+        try:
+            sec = fn(frame)
+            return str(sec.interval.interpolation).split(".")[-1]
+        except Exception:
+            continue
+    return None
+
+
+def _d_keys_report(params, scene):
+    """Every layer's key frames and the interpolation of the section after each key."""
+    lv = scene.layers_viewer()
+    layers = []
+    union = set()
+    for lid in lv.all_layer_ids():
+        if lid.is_null():
+            continue
+        layer = lv.layer(lid)
+        try:
+            name = str(layer.header.name)
+        except Exception:
+            name = _id_str(lid)
+        frames = [int(f) for f in layer.key_frame_indices()]
+        union.update(frames)
+        layers.append(
+            {
+                "id": _id_str(lid),
+                "name": name,
+                "key_frames": frames,
+                "interpolation": {str(f): _section_interpolation(layer, f) for f in frames},
+            }
+        )
+    return {
+        "frames_count": int(scene.data_viewer().get_animation_size()),
+        "key_frames": sorted(union),
+        "layers": layers,
+    }
+
+
+def _d_fulcrum_spans_get(params, scene):
+    """Frame spans where each named point's fulcrum is on."""
+    objs = _objects_by_name(scene)
+    mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
+    dv = mv.data_viewer()
+    n = int(dv.get_animation_size())
+    out = {}
+    for name in params.get("points") or []:
+        oid = objs.get(name)
+        if oid is None:
+            out[name] = None
+            continue
+        b = bv.get_behaviour_by_name(oid, "FulcrumPoint")
+        if b is None:
+            out[name] = None
+            continue
+        did = bv.get_behaviour_data(b, "fulcrum_state")
+        out[name] = _frames_to_spans([f for f in range(n) if int(dv.get_data_value(did, f))])
+    return {"frames": n, "spans": out}
+
+
+_HANDLERS.update({"keys_report": _d_keys_report, "fulcrum_spans_get": _d_fulcrum_spans_get})
+
+
+def _d_keys_add(params, scene):
+    """Add a key on every layer at each frame, keeping the current pose there."""
+    frames = sorted({int(f) for f in params.get("frames") or []})
+    n = int(scene.data_viewer().get_animation_size())
+    frames = [f for f in frames if 0 <= f < n]
+
+    def mod(model, update, updater):
+        lv = scene.layers_viewer()
+        le = model.layers_editor()
+        for lid in lv.all_layer_ids():
+            if lid.is_null():
+                continue
+            for f in frames:
+                le.set_fixed_interpolation_or_key_if_need(lid, f, True)
+        le.normalize_sections(scene)
+
+    if frames:
+        _checked_modify(scene, "cascadeur-mcp add keys", mod, update=True)
+    return {"keyed_frames": frames}
+
+
+_HANDLERS["keys_add"] = _d_keys_add
+
+
+def _quick_windows(title=None):
+    import shiboken6
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtQuick import QQuickWindow
+
+    out = []
+    for w in QGuiApplication.instance().allWindows():
+        if not w.isVisible() or (title is not None and w.title() != title):
+            continue
+        try:
+            out.append(
+                (w.title(), shiboken6.wrapInstance(shiboken6.getCppPointer(w)[0], QQuickWindow))
+            )
+        except Exception:
+            continue
+    return out
+
+
+def _quick_buttons(item, found):
+    cn = item.metaObject().className()
+    if "Button" in cn and item.property("text"):
+        found.append(item)
+    for child in item.childItems():
+        _quick_buttons(child, found)
+    return found
+
+
+def _d_dialogs_list(params, scene):
+    """Visible Cascadeur dialogs (non-main windows) and their button labels."""
+    out = []
+    for title, qw in _quick_windows():
+        if title.endswith("- Cascadeur") or not title:
+            continue
+        texts = [b.property("text") for b in _quick_buttons(qw.contentItem(), [])]
+        out.append({"title": title, "buttons": texts})
+    return {"dialogs": out}
+
+
+def _d_dialog_answer(params, scene):
+    """Press the button labelled ``button`` in every visible dialog titled ``title``."""
+    from PySide6.QtCore import QMetaObject
+
+    title, label = params.get("title"), params.get("button")
+    pressed = 0
+    for _, qw in _quick_windows(title):
+        for b in _quick_buttons(qw.contentItem(), []):
+            if b.property("text") == label:
+                QMetaObject.invokeMethod(b, "clicked")
+                pressed += 1
+                break
+    return {"title": title, "button": label, "pressed": pressed}
+
+
+_HANDLERS.update({"dialogs_list": _d_dialogs_list, "dialog_answer": _d_dialog_answer})
+
+
+# ===========================================================================
+# Behaviours (1.3): every physics/IK property on any object, and local rotation
+# keys for box controllers such as fingers. Hands, feet and fingers carry
+# FulcrumPoint, Fixation, FulcrumGroup, AutoPhysicsApply, SecondaryMotion,
+# CompensationMotion, Ragdoll, CollisionPenetrationCleaning, SeparationOfMotion
+# and AngleConstraints; the Center of mass carries per-frame AutoPhysics weights.
+# ===========================================================================
+
+PHYSICS_BEHAVIOURS = (
+    "FulcrumPoint",
+    "Fixation",
+    "ToolFixation",
+    "FulcrumGroup",
+    "AutoPhysicsApply",
+    "SecondaryMotion",
+    "CompensationMotion",
+    "Ragdoll",
+    "CollisionPenetrationCleaning",
+    "SeparationOfMotion",
+    "AngleConstraints",
+    "AutoPhysics",
+    "CenterOfMass",
+)
+
+
+def _plain(value):
+    import numpy as np
+
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if hasattr(value, "to_euler_angles_x_y_z"):
+        try:
+            return {
+                "euler_xyz_deg": [
+                    round(float(a), 4)
+                    for a in np.degrees(np.asarray(value.to_euler_angles_x_y_z()))
+                ]
+            }
+        except Exception:
+            pass
+    try:
+        arr = np.asarray(value, dtype=float)
+        return [round(float(x), 5) for x in arr.ravel()] if arr.ndim else float(arr)
+    except Exception:
+        return str(value)[:80]
+
+
+def _prop_id(bv, b, prop):
+    for kind, getter in (("setting", bv.get_behaviour_setting), ("data", bv.get_behaviour_data)):
+        try:
+            return kind, getter(b, prop)
+        except Exception:
+            continue
+    return None, None
+
+
+def _d_behaviours_get(params, scene):
+    """Properties and values of named behaviours on named objects at ``frame``."""
+    names = params.get("object_names") or []
+    wanted = params.get("behaviours") or list(PHYSICS_BEHAVIOURS)
+    frame = int(params.get("frame", 0))
+    objs = _objects_by_name(scene)
+    mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
+    dv = mv.data_viewer()
+    out = {}
+    for name in names:
+        oid = objs.get(name)
+        if oid is None:
+            out[name] = None
+            continue
+        entry = {}
+        for b in bv.get_behaviours(oid):
+            bname = bv.get_behaviour_name(b)
+            if bname not in wanted:
+                continue
+            props = {}
+            for prop in bv.get_behaviour_property_names(b):
+                kind, pid = _prop_id(bv, b, prop)
+                if kind is None:
+                    continue
+                try:
+                    raw = (
+                        dv.get_setting_value(pid)
+                        if kind == "setting"
+                        else dv.get_data_value(pid, frame)
+                    )
+                except Exception:
+                    continue
+                props[prop] = {"kind": kind, "value": _plain(raw)}
+            entry[bname] = props
+        out[name] = entry
+    return {"frame": frame, "objects": out}
+
+
+def _native(value, current):
+    import numpy as np
+
+    if isinstance(current, bool) or isinstance(value, bool):
+        return bool(value)
+    if isinstance(current, int) and not isinstance(current, bool):
+        return int(value)
+    if isinstance(value, (list, tuple)):
+        return np.asarray(value, dtype=float)
+    return float(value)
+
+
+def _d_behaviour_set(params, scene):
+    """Set one behaviour property on objects. Data properties take ``frames`` (default all)."""
+    names = params.get("object_names") or []
+    bname = params.get("behaviour")
+    prop = params.get("property")
+    value = params.get("value")
+    frames = params.get("frames")
+    objs = _objects_by_name(scene)
+    missing = [n for n in names if n not in objs]
+    if missing:
+        raise ValueError("unknown objects: " + ", ".join(missing))
+    mv = scene.model_viewer()
+    bv = mv.behaviour_viewer()
+    dv = mv.data_viewer()
+    n = int(dv.get_animation_size())
+    targets = []
+    for name in names:
+        b = bv.get_behaviour_by_name(objs[name], bname)
+        if b is None:
+            raise ValueError(f"{name!r} has no {bname!r} behaviour")
+        kind, pid = _prop_id(bv, b, prop)
+        if kind is None:
+            raise ValueError(f"{bname}.{prop} is not a data or setting property on {name!r}")
+        targets.append((name, kind, pid))
+    written = {}
+
+    def mod(model, update, updater):
+        de = model.data_editor()
+        for name, kind, pid in targets:
+            if kind == "setting":
+                current = dv.get_setting_value(pid)
+                de.set_setting_value(pid, _native(value, current))
+                written[name] = "setting"
+            else:
+                fs = range(n) if frames is None else [int(f) for f in frames if 0 <= int(f) < n]
+                current = dv.get_data_value(pid, 0)
+                v = _native(value, current)
+                count = 0
+                for f in fs:
+                    de.set_data_value(pid, f, v)
+                    count += 1
+                written[name] = f"data on {count} frames"
+
+    _checked_modify(scene, f"cascadeur-mcp set {bname}.{prop}", mod, update=True)
+    readback = {}
+    for name, kind, pid in targets:
+        f0 = 0 if frames is None or not frames else int(frames[0])
+        readback[name] = _plain(
+            dv.get_setting_value(pid) if kind == "setting" else dv.get_data_value(pid, f0)
+        )
+    return {"written": written, "readback": readback}
+
+
+def _d_local_rotation_keys_set(params, scene):
+    """Key local rotations: keys = {frame: {object: [rx, ry, rz] degrees}} applied on top of
+    the object's local rotation at ``base_frame`` (its rest pose on a fresh rig)."""
+    import math
+
+    import csc
+
+    keys = params.get("keys") or {}
+    base_frame = int(params.get("base_frame", 0))
+    objs = _objects_by_name(scene)
+    missing = sorted({nm for fk in keys.values() for nm in fk if nm not in objs})
+    if missing:
+        raise ValueError("unknown objects: " + ", ".join(missing[:20]))
+    written = {"frames": 0, "values": 0}
+
+    def mod(model, update, updater):
+        lv = scene.layers_viewer()
+        le = model.layers_editor()
+        layer_ids = [lid for lid in lv.all_layer_ids() if not lid.is_null()]
+        base = {}
+        for nm, q in (params.get("base_quaternions") or {}).items():
+            w, x, y, z = (float(v) for v in q)
+            base[nm] = csc.math.Rotation.from_quaternion(w, x, y, z)
+        for fk in keys.values():
+            for nm in fk:
+                if nm not in base:
+                    node = (
+                        update.get_object_by_id(objs[nm]).root_group().node_deep("Local Rotation")
+                    )
+                    base[nm] = node.value(base_frame)
+        for fs in sorted(keys, key=int):
+            f = int(fs)
+            ids = set()
+            for nm, deg in keys[fs].items():
+                node = update.get_object_by_id(objs[nm]).root_group().node_deep("Local Rotation")
+                rx, ry, rz = (math.radians(float(a)) for a in (list(deg) + [0, 0, 0])[:3])
+                delta = csc.math.Rotation.from_euler(rx, ry, rz)
+                node.set_value(base[nm] * delta if hasattr(base[nm], "__mul__") else delta, f)
+                ids.add(node.data_id())
+                written["values"] += 1
+            for lid in layer_ids:
+                le.set_fixed_interpolation_or_key_if_need(lid, f, True)
+            model.set_fixed_interpolation_if_need(ids, f)
+            updater.run_update(ids, f)
+            written["frames"] += 1
+        le.normalize_sections(scene)
+
+    _checked_modify(scene, "cascadeur-mcp local rotation keys", mod, update=True)
+    return written
+
+
+_HANDLERS.update(
+    {
+        "behaviours_get": _d_behaviours_get,
+        "behaviour_set": _d_behaviour_set,
+        "local_rotation_keys_set": _d_local_rotation_keys_set,
+    }
+)
+
+
+# ===========================================================================
+# Settings panels (1.3): Cascadeur's Physics settings (AutoPhysics modes,
+# corrector, smoothing, compensation, separation, secondary motion, ballistics,
+# friction, jerk weights) and Scene settings (FPS, Fulcrum Motion Cleaning,
+# Inbetweening, Mirror, Motion Generation, ...) are QML panels with no Python
+# API. Each open scene tab owns one copy of each panel.
+# ===========================================================================
+
+
+def _main_quick_window():
+    for title, qw in _quick_windows():
+        if title.endswith("- Cascadeur"):
+            return qw
+    raise RuntimeError("Cascadeur main window not found")
+
+
+def _qml_base(item):
+    try:
+        return item.metaObject().className().split("_QML")[0]
+    except RuntimeError:  # item deleted by a Loader while walking
+        return ""
+
+
+def _walk_items(item, acc, pred):
+    try:
+        if pred(item):
+            acc.append(item)
+        children = list(item.childItems())
+    except RuntimeError:
+        return acc
+    for child in children:
+        _walk_items(child, acc, pred)
+    return acc
+
+
+def _settings_panels():
+    window = _main_quick_window()  # keep the wrapper alive while walking its items
+    root = window.contentItem()
+    panels = _walk_items(root, [], lambda it: _qml_base(it) == "ViewSettings")
+    out = []
+    for p in panels:
+        m = p.property("model")
+        groups = [str(m.data(m.index(r, 0), 259)) for r in range(m.rowCount())]
+        out.append((p, groups))
+    return out
+
+
+def _panel_kind(groups):
+    if "AutoPhysics" in groups or "Physics corrector" in groups:
+        return "physics"
+    if "FPS" in groups or "Fulcrum Motion Cleaning" in groups:
+        return "scene"
+    return "other"
+
+
+def _panel_rows(panel):
+    """(group, label, control_kind, value, flow_item) for every labelled row."""
+    rows = []
+    for delegate in _walk_items(panel, [], lambda it: _qml_base(it) == "ViewSettingsGroupDelegate"):
+        group = None
+        for t in _walk_items(delegate, [], lambda it: _qml_base(it) == "Text"):
+            group = t.property("text")
+            break
+        for container in _walk_items(
+            delegate, [], lambda it: _qml_base(it) == "ViewSettingsGroupContainer"
+        ):
+            for row in container.childItems():
+                texts = [c for c in row.childItems() if _qml_base(c) == "Text"]
+                flows = [c for c in row.childItems() if "Flow" in c.metaObject().className()]
+                if not texts or not flows:
+                    continue
+                label = texts[0].property("text")
+                flow = flows[0]
+                kind, value = "unknown", None
+                bools = _walk_items(flow, [], lambda it: _qml_base(it) == "BoolSwitcher")
+                sliders = _walk_items(
+                    flow,
+                    [],
+                    lambda it: _qml_base(it) == "Slider" and it.property("value") is not None,
+                )
+                enums = _walk_items(flow, [], lambda it: _qml_base(it) == "EnumButtonsGroup")
+                checks = _walk_items(flow, [], lambda it: _qml_base(it) == "CheckBox")
+                numbers = _walk_items(flow, [], lambda it: _qml_base(it) == "NumberInput")
+                if bools:
+                    kind, value = "bool", bool(bools[0].property("boolUnitValue"))
+                elif sliders:
+                    kind, value = "number", float(sliders[0].property("value"))
+                elif enums:
+                    buttons = _walk_items(flow, [], lambda it: _qml_base(it) == "CheckButton")
+                    options = [_button_text(b) for b in buttons]
+                    current = [_button_text(b) for b in buttons if b.property("checked")]
+                    kind, value = (
+                        "enum",
+                        {"current": current[0] if current else None, "options": options},
+                    )
+                elif checks:
+                    kind, value = "check", bool(checks[0].property("checked"))
+                elif len(numbers) == 1:
+                    kind, value = "number_input", numbers[0].property("value")
+                elif numbers:
+                    kind, value = "vector_input", [n.property("value") for n in numbers]
+                rows.append((group, label, kind, value, flow))
+    return rows
+
+
+def _button_text(button):
+    for t in _walk_items(button, [], lambda it: _qml_base(it) == "Text"):
+        if t.property("text"):
+            return t.property("text")
+    return button.property("text")
+
+
+def _panel_for(kind, scene_name=None):
+    """All copies of a settings panel, and the copy that belongs to ``scene_name``.
+
+    Each open scene tab owns one copy, in tab order (verified 2026-11-11: changing
+    Gravity on copy 1 changed only the second tab's gravity_per_frame).
+    """
+    import csc
+
+    app = csc.app.get_application()
+    panels = [(p, g) for p, g in _settings_panels() if _panel_kind(g) == kind]
+    tabs = [v.name() for v in app.get_scene_manager().scenes()]
+    if not panels:
+        raise RuntimeError(f"no {kind} settings panel found")
+    target = scene_name or app.current_scene().name()
+    index = next((i for i, t in enumerate(tabs) if t == target or t.startswith(target)), None)
+    mine = panels[index][0] if index is not None and len(panels) == len(tabs) else None
+    return panels, len(tabs), mine
+
+
+def _d_settings_panel_get(params, scene):
+    kind = params.get("panel", "physics")
+    panels, tabs, mine = _panel_for(kind, params.get("scene_name"))
+    if mine is None:
+        raise RuntimeError(
+            f"{len(panels)} {kind} panels for {tabs} tabs; cannot tell which is this scene's"
+        )
+    rows = _panel_rows(mine)
+    return {
+        "panel": kind,
+        "copies": len(panels),
+        "open_tabs": tabs,
+        "rows": [{"group": g, "label": lab, "kind": k, "value": v} for g, lab, k, v, _ in rows],
+    }
+
+
+def _press(button):
+    """Press a QML AbstractButton the way a click does: toggle it on, then emit toggled/clicked."""
+    from PySide6.QtCore import QMetaObject
+
+    if button.property("checkable") and not button.property("checked"):
+        QMetaObject.invokeMethod(button, "toggle")
+        QMetaObject.invokeMethod(button, "toggled")
+    QMetaObject.invokeMethod(button, "clicked")
+
+
+def _d_settings_panel_set(params, scene):
+    """Set one row of a settings panel; refuses when more than one scene tab is open."""
+    from PySide6.QtCore import Q_ARG, QMetaObject
+
+    kind = params.get("panel", "physics")
+    label = params.get("label")
+    group = params.get("group")
+    value = params.get("value")
+    panels, tabs, mine = _panel_for(kind, params.get("scene_name"))
+    if mine is None:
+        raise RuntimeError(
+            f"{len(panels)} copies of the {kind} settings panel for {tabs} scene tabs; "
+            "cannot tell which belongs to this scene, so nothing was changed."
+        )
+    matches = [r for r in _panel_rows(mine) if r[1] == label and (group is None or r[0] == group)]
+    if len(matches) != 1:
+        raise ValueError(f"{len(matches)} rows match label={label!r} group={group!r}")
+    g, row_label, k, before, flow = matches[0]
+    if k == "bool":
+        want = "On" if bool(value) else "Off"
+        targets = [
+            b
+            for b in _walk_items(flow, [], lambda it: _qml_base(it) == "CheckButton")
+            if _button_text(b) == want
+        ]
+        if not targets:
+            raise RuntimeError(f"no {want!r} button in row {label!r}")
+        _press(targets[0])
+    elif k == "number":
+        slider = _walk_items(
+            flow, [], lambda it: _qml_base(it) == "Slider" and it.property("value") is not None
+        )[0]
+        QMetaObject.invokeMethod(slider, "setValue", Q_ARG("QVariant", float(value)))
+    elif k == "enum":
+        targets = [
+            b
+            for b in _walk_items(flow, [], lambda it: _qml_base(it) == "CheckButton")
+            if _button_text(b) == str(value)
+        ]
+        if not targets:
+            raise ValueError(f"option {value!r} not in row {label!r}")
+        _press(targets[0])
+    elif k == "number_input":
+        box = _walk_items(flow, [], lambda it: _qml_base(it) == "NumberInput")[0]
+        QMetaObject.invokeMethod(box, "numberEditingFinished", Q_ARG("QVariant", float(value)))
+    elif k == "check":
+        box = _walk_items(flow, [], lambda it: _qml_base(it) == "CheckBox")[0]
+        if bool(box.property("checked")) != bool(value):
+            QMetaObject.invokeMethod(box, "toggle")
+            QMetaObject.invokeMethod(box, "toggled")
+            QMetaObject.invokeMethod(box, "clicked")
+    else:
+        raise ValueError(f"row {label!r} has an unsupported control")
+    after = [r for r in _panel_rows(mine) if r[1] == label and (group is None or r[0] == group)][0][
+        3
+    ]
+    return {"group": g, "label": row_label, "kind": k, "before": before, "after": after}
+
+
+_HANDLERS.update(
+    {"settings_panel_get": _d_settings_panel_get, "settings_panel_set": _d_settings_panel_set}
+)
+
+
+def _d_timeline_select(params, scene):
+    """Select the frame interval [first, last] on every animation layer (the timeline selection
+    that interval tools such as Fulcrum Motion Cleaning and interval AutoPhysics act on)."""
+    first, last = int(params["first"]), int(params["last"])
+    if last - first < 0:
+        raise ValueError("last must be >= first")
+    lv = scene.layers_viewer()
+    ids = [lid for lid in lv.all_layer_ids() if not lid.is_null()]
+    selector = scene.get_layers_selector()
+    selector.set_full_selection_by_parts(ids, first, last)
+    sel = selector.selection()
+    try:
+        interval = sel.frames_interval()
+        got = (
+            [int(interval.first), int(interval.last)]
+            if hasattr(interval, "first")
+            else str(interval)
+        )
+    except Exception as exc:
+        got = f"unreadable: {exc}"
+    return {"requested": [first, last], "layers": len(ids), "selection": got}
+
+
+_HANDLERS["timeline_select"] = _d_timeline_select
+
+
+def _d_local_rotations_get(params, scene):
+    """Local rotations of named objects at ``frame`` as [w, x, y, z] quaternions."""
+    names = params.get("object_names") or []
+    frame = int(params.get("frame", 0))
+    objs = _objects_by_name(scene)
+    out = {}
+    failures = []
+
+    def read(model, update, updater):
+        try:
+            for nm in names:
+                node = update.get_object_by_id(objs[nm]).root_group().node_deep("Local Rotation")
+                q = node.value(frame).to_quaternion()
+                vals = [
+                    getattr(q, c)() if callable(getattr(q, c)) else getattr(q, c) for c in "wxyz"
+                ]
+                out[nm] = [round(float(v), 7) for v in vals]
+        except Exception as exc:
+            failures.append(exc)
+
+    _checked_modify(scene, "cascadeur-mcp: read local rotations", read, update=True)
+    if failures:
+        raise failures[0]
+    return {"frame": frame, "quaternions": out}
+
+
+_HANDLERS["local_rotations_get"] = _d_local_rotations_get

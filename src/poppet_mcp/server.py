@@ -102,6 +102,11 @@ def run_script(code: str) -> dict:
     Cascadeur caps a call at roughly 30 seconds, so keep scripts short. Prefer
     the typed tools; use this for discovery or one-off operations.
     """
+    if "play_to_video_file" in code:
+        raise ValueError(
+            "play_to_video_file crashed Cascadeur 2026.2.3 when called from script; "
+            "use render_frames (still per frame, encoded outside Cascadeur)"
+        )
     return _connection().run_script(code)
 
 
@@ -212,7 +217,9 @@ def execute_csc_code(code: str) -> dict:
     """Execute Python in Cascadeur's embedded interpreter (typed escape hatch).
 
     Runs through cascadeur-mcp's in-app runtime, so ``csc`` and ``scene`` are available.
-    Returns the expression value (or ``None`` for statements). Prefer ``run_script``
+    Returns ``repr`` (the expression value, or a ``result`` variable your statements
+    set) and ``stdout`` (everything printed, last 20 000 characters). Errors come
+    back with the in-app traceback. Prefer ``run_script``
     if you want the script server's raw response instead, and wrap mutations in
     ``scene.modify_with_session(...)`` to keep undo working.
     """
@@ -639,9 +646,18 @@ def csc_schema() -> str:
 # ----------------------------------------------------------------------------
 
 
+# Pipeline tools register themselves on ``mcp`` at import time.
+from poppet_mcp import pipeline_tools  # noqa: E402,F401
+
+
 def main() -> None:
     mcp.run()
 
 
 if __name__ == "__main__":
-    main()
+    # ``python -m poppet_mcp.server`` runs this file as ``__main__``, a separate module
+    # object from ``poppet_mcp.server``. The pipeline tools register on the imported
+    # module's ``mcp``, so serve that one or they would be missing from the server.
+    from poppet_mcp import server as _server
+
+    _server.main()
