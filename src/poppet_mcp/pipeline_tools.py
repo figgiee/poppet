@@ -90,9 +90,11 @@ def use_scene(scene_name: str | None) -> dict:
         _target_scene = None
         return {"pinned": None}
     info = _call("scene_info", scene_name=scene_name)
-    _target_scene = scene_name
+    # Pin the resolved full tab name: a prefix would also match other tabs that
+    # share it, and the visible-tab check below would let them through.
+    _target_scene = info.get("scene_name") or scene_name
     return {
-        "pinned": scene_name,
+        "pinned": _target_scene,
         "current_tab": info.get("current_tab"),
         "objects": info.get("object_count"),
     }

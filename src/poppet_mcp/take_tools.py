@@ -115,6 +115,24 @@ def mirror_positions(
     return out
 
 
+def mirror_spans(spans: dict[str, list[list[int]] | None]) -> dict[str, list[list[int]]]:
+    """Swap each point's fulcrum spans onto its ``_l``/``_r`` partner.
+
+    A point whose partner had no spans (or was not listed) gets an empty list, so
+    its old spans are cleared rather than left on. ``None`` (no fulcrum) is skipped.
+    """
+    swapped: dict[str, list[list[int]]] = {}
+    for n, rs in spans.items():
+        if rs is None:
+            continue
+        other = n[:-2] + ("_r" if n.endswith("_l") else "_l") if n[-2:] in ("_l", "_r") else n
+        swapped[other] = rs
+    for n, rs in spans.items():
+        if rs is not None:
+            swapped.setdefault(n, [])
+    return swapped
+
+
 def _scale_spans(
     spans: dict[str, list[list[int]]], factor: float, first: int
 ) -> dict[str, list[list[int]]]:
@@ -186,11 +204,7 @@ def mirror_take(plane_x: float = 0.0, fulcrum_points: list[str] | None = None) -
     spans = pt._scall("fulcrum_spans_get", points=fulcrum_points)["spans"] if fulcrum_points else {}
     result = pt.set_pose_keys({str(f): p for f, p in mirror_positions(take, plane_x).items()})
     if spans:
-        swapped = {}
-        for n, rs in spans.items():
-            other = n[:-2] + ("_r" if n.endswith("_l") else "_l") if n[-2:] in ("_l", "_r") else n
-            swapped[other] = rs or []
-        result["fulcrums"] = pt.set_fulcrum_spans({k: v for k, v in swapped.items() if v})
+        result["fulcrums"] = pt.set_fulcrum_spans(mirror_spans(spans))
     result["mirrored_keys"] = len(frames)
     return result
 

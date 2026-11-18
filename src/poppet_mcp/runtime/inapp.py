@@ -114,8 +114,8 @@ def _dispatch_legacy(message, scene):
         }
 
 
-def _scene_by_name(name):
-    """Domain scene of the open tab named ``name`` (exact, else unique prefix); no tab switch."""
+def _view_scene_by_name(name):
+    """View scene of the open tab named ``name`` (exact, else unique prefix); no tab switch."""
     import csc
 
     views = list(csc.app.get_application().get_scene_manager().scenes())
@@ -125,7 +125,12 @@ def _scene_by_name(name):
     ]
     if len(matches) != 1:
         raise ValueError(f"scene {name!r} matched {len(matches)} open scenes; open: {names}")
-    return matches[0].domain_scene()
+    return matches[0]
+
+
+def _scene_by_name(name):
+    """Domain scene of the open tab named ``name`` (exact, else unique prefix); no tab switch."""
+    return _view_scene_by_name(name).domain_scene()
 
 
 def _safe_repr(obj):
@@ -294,7 +299,12 @@ def _d_scene_info(params, scene):
     # View-scene name + animation_boundary live on csc.view.Scene, not domain scene.
     try:
         view_scene = csc.app.get_application().current_scene()
-        info["scene_name"] = params.get("scene_name") or view_scene.name()
+        # the resolved full tab name, so a pin by prefix is stored unambiguously
+        info["scene_name"] = (
+            _view_scene_by_name(params["scene_name"]).name()
+            if params.get("scene_name")
+            else view_scene.name()
+        )
         info["current_tab"] = view_scene.name()
     except Exception as e:
         info["scene_name_error"] = str(e)
@@ -2493,10 +2503,7 @@ def _d_scene_timing(params, scene):
     try:
         view = csc.app.get_application().current_scene()
         if params.get("scene_name"):
-            for v in csc.app.get_application().get_scene_manager().scenes():
-                if v.name().startswith(params["scene_name"]):
-                    view = v
-                    break
+            view = _view_scene_by_name(params["scene_name"])
         out["gravity_per_frame"] = float(view.gravity_per_frame())
     except Exception as exc:
         out["gravity_error"] = f"{type(exc).__name__}: {exc}"
@@ -3010,8 +3017,9 @@ def _panel_for(kind, scene_name=None):
     tabs = [v.name() for v in app.get_scene_manager().scenes()]
     if not panels:
         raise RuntimeError(f"no {kind} settings panel found")
-    target = scene_name or app.current_scene().name()
-    index = next((i for i, t in enumerate(tabs) if t == target or t.startswith(target)), None)
+    # same resolution as every other handler: exact name, else a unique prefix
+    target = _view_scene_by_name(scene_name).name() if scene_name else app.current_scene().name()
+    index = tabs.index(target) if tabs.count(target) == 1 else None
     mine = panels[index][0] if index is not None and len(panels) == len(tabs) else None
     return panels, len(tabs), mine
 

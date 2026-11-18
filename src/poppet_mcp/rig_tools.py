@@ -267,7 +267,7 @@ def setup_contacts(
             "behaviours_get",
             object_names=[p],
             behaviours=["AutoPhysicsApply", "FulcrumPoint"],
-            frame=_span_frames(s)[0],
+            frame=(_span_frames(s) or [0])[0],
         )["objects"][p]
         for p, s in contacts.items()
     }

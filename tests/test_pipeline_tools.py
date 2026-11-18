@@ -418,3 +418,15 @@ def test_scale_spans():
     from poppet_mcp.take_tools import _scale_spans
 
     assert _scale_spans({"foot": [[4, 8]], "hand": []}, 0.5, 0) == {"foot": [[2, 4]]}
+
+
+def test_mirror_spans_clears_the_side_whose_partner_had_none():
+    from poppet_mcp.take_tools import mirror_spans
+
+    spans = {"hand_MainPoint_l": [[25, 29]], "hand_MainPoint_r": [], "missing_l": None}
+    assert mirror_spans(spans) == {"hand_MainPoint_r": [[25, 29]], "hand_MainPoint_l": []}
+    # only one side listed: the partner takes the spans and the listed side is cleared
+    assert mirror_spans({"foot_MainPoint_l": [[0, 11]]}) == {
+        "foot_MainPoint_r": [[0, 11]],
+        "foot_MainPoint_l": [],
+    }
