@@ -34,6 +34,7 @@ def pytest_configure(config):
     cleanup is disabled here: the directories live in ``.pytest-tmp/`` and are
     gitignored.
     """
+    config.addinivalue_line("markers", "autosave: run with autosave on")
     if not config.option.basetemp:
         base = os.path.join(REPO_ROOT, ".pytest-tmp")
         os.makedirs(base, exist_ok=True)
@@ -99,3 +100,15 @@ def fake_scene():
     scene.layers_viewer.return_value.all_layer_ids.return_value = []
     scene.selector.return_value.selected.return_value.ids = []
     return scene
+
+
+@pytest.fixture(autouse=True)
+def _no_autosave(monkeypatch, request):
+    """Autosave adds one extra exec_csc request after every mutating command.
+
+    Tests that count requests run with it off; tests marked ``autosave`` keep it on.
+    """
+    if "autosave" in request.keywords:
+        monkeypatch.delenv("POPPET_AUTOSAVE", raising=False)
+    else:
+        monkeypatch.setenv("POPPET_AUTOSAVE", "0")
