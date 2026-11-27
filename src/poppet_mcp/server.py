@@ -17,6 +17,7 @@ Environment:
 from __future__ import annotations
 
 import os
+import sys
 from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
@@ -45,9 +46,108 @@ def _connection() -> CascadeurConnection:
     return _conn
 
 
+# Commands that never change a scene. Every other command is followed by an autosave.
+READ_ONLY_COMMANDS = frozenset(
+    {
+        "active_layer_get",
+        "behaviours_get",
+        "dialogs_list",
+        "frame_get",
+        "fulcrum_spans_get",
+        "keyframes_get",
+        "keys_report",
+        "layers_list",
+        "local_rotations_get",
+        "motion_sample",
+        "object_attributes_list",
+        "object_hierarchy",
+        "object_transform_get",
+        "objects_list",
+        "rig_audit",
+        "rig_rest_dump",
+        "save_scene",
+        "scene_info",
+        "scene_timing",
+        "schema_get",
+        "selection_get",
+        "settings_panel_get",
+        "telemetry_read",
+        "viewport_screenshot",
+        "fbx_export",
+        "frame_set",
+        "viewport_set",
+        "dialog_answer",
+    }
+)
+
+# Runs inside Cascadeur: save every open scene to its own file. A scene that has never been
+# saved gets a named file in the autosave folder, so closing Cascadeur never asks where to save.
+_AUTOSAVE_CODE = """
+import csc, os, time
+_sm = csc.app.get_application().get_scene_manager()
+_dir = {folder!r}
+_saved = []
+for _i, _s in enumerate(_sm.scenes()):
+    _p = _s.get_path_name() or ''
+    if not _p.lower().endswith('.casc'):
+        os.makedirs(_dir, exist_ok=True)
+        _p = os.path.join(_dir, time.strftime('untitled-%Y%m%d-%H%M%S') + '-' + str(_i) + '.casc')
+    elif os.path.exists(_p) and not os.access(_p, os.W_OK):
+        # A read-only base scene or a stock sample: never overwrite it, and never leave
+        # Cascadeur's half-written temp copy next to it.
+        continue
+    _s.save(_p)
+    _saved.append(_p)
+result = _saved
+"""
+
+_CLOSE_TABS_CODE = """
+import csc
+_sm = csc.app.get_application().get_scene_manager()
+_cur = csc.app.get_application().current_scene()
+_keep = _cur.name() if _cur is not None else None
+_closed = []
+for _s in list(_sm.scenes()):
+    if _s.name() != _keep:
+        _closed.append(_s.name())
+        _sm.remove_application_scene(_s)
+result = (_closed, _keep)
+"""
+
+
+def _autosave_folder() -> str:
+    return os.environ.get("POPPET_AUTOSAVE_DIR") or os.path.join(
+        os.path.expanduser("~"), "Documents", "Cascadeur", "poppet-autosave"
+    )
+
+
+def autosave_enabled() -> bool:
+    return os.environ.get("POPPET_AUTOSAVE", "1") not in ("0", "false", "off")
+
+
+def _autosave() -> list[str] | None:
+    """Save every open scene to its file. Never raises: a failed autosave must not fail the tool."""
+    try:
+        out = _connection().request(
+            "exec_csc", {"code": _AUTOSAVE_CODE.format(folder=_autosave_folder())}
+        )
+        return out.get("repr") if isinstance(out, dict) else None
+    except Exception as exc:  # pragma: no cover - needs a live Cascadeur
+        print(f"poppet autosave failed: {exc}", file=sys.stderr)
+        return None
+
+
 def _call(command: str, **params: Any) -> Any:
-    """Send one command to the in-app runtime and return its result payload."""
-    return _connection().request(command, params)
+    """Send one command to the in-app runtime and return its result payload.
+
+    Any command that can change a scene is followed by an autosave of every open
+    scene (``POPPET_AUTOSAVE=0`` turns it off), so Cascadeur can be closed at any
+    time without a save prompt.
+    """
+    result = _connection().request(command, params)
+    if command not in READ_ONLY_COMMANDS and autosave_enabled():
+        _autosave()
+    return result
 
 
 # ----------------------------------------------------------------------------
@@ -455,8 +555,22 @@ def save_scene(path: str) -> dict:
 
 @mcp.tool()
 def load_scene(path: str) -> dict:
-    """Open a ``.casc`` file, replacing the current scene."""
+    """Open a ``.casc`` file. Cascadeur opens it in a NEW tab; call ``close_spare_tabs``
+    when a step is finished so tabs do not pile up."""
     return _call("load_scene", path=path)
+
+
+@mcp.tool()
+def close_spare_tabs() -> dict:
+    """Save every open scene, then close every tab except the visible one.
+
+    Run it at the end of a step. Each ``load_scene`` opens a new tab and every tab
+    holds memory; nine forgotten tabs held about 14 GB. Nothing is lost: all scenes
+    are saved to their own files first.
+    """
+    saved = _autosave()
+    out = _connection().request("exec_csc", {"code": _CLOSE_TABS_CODE})
+    return {"saved": saved, "closed_and_kept": out.get("repr") if isinstance(out, dict) else out}
 
 
 @mcp.tool()

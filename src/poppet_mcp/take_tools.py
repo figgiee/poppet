@@ -17,14 +17,54 @@ MAX_SAMPLES = 2048
 POINT_TYPES = ["Point", "Limb Direction"]
 
 
+def summarize_keys(full: dict, max_frames: int = 64) -> dict:
+    """Short form of a keys report: counts per layer and interpolation, not every key."""
+    union = full.get("key_frames", [])
+    interp: dict[str, int] = {}
+    layers = []
+    for layer in full.get("layers", []):
+        frames = layer.get("key_frames", [])
+        counts: dict[str, int] = {}
+        for value in layer.get("interpolation", {}).values():
+            name = str(value).split(".")[-1]
+            counts[name] = counts.get(name, 0) + 1
+            interp[name] = interp.get(name, 0) + 1
+        layers.append(
+            {
+                "name": layer.get("name"),
+                "keys": len(frames),
+                "range": [frames[0], frames[-1]] if frames else None,
+                "interpolation": counts,
+            }
+        )
+    out = {
+        "frames_count": full.get("frames_count"),
+        "key_frame_count": len(union),
+        "keys_total": sum(item["keys"] for item in layers),
+        "interpolation": interp,
+        "layers": layers,
+    }
+    if len(union) <= max_frames:
+        out["key_frames"] = union
+    else:
+        out["key_frames_note"] = (
+            f"{len(union)} key frames ({union[0]}-{union[-1]}); a key on every frame looks baked. "
+            "Pass detail=True for the full list, or unbake_take to reduce it."
+        )
+    return out
+
+
 @mcp.tool()
-def keys_report() -> dict:
-    """Key frames per layer and the interpolation after each key, plus the clip length.
+def keys_report(detail: bool = False) -> dict:
+    """Key counts per layer and interpolation counts, plus the clip length.
 
     Use it to confirm keys landed where you expect and that sections are BEZIER
-    (smooth) rather than held, before physics or review.
+    (smooth) rather than held, before physics or review. The default is a summary
+    (lists key frames only when there are 64 or fewer); ``detail=True`` returns every
+    layer's key frames and the interpolation after each key, which floods on baked clips.
     """
-    return pt._scall("keys_report")
+    full = pt._scall("keys_report")
+    return full if detail else summarize_keys(full)
 
 
 def _controller_names(scene_name: str | None = None) -> list[str]:

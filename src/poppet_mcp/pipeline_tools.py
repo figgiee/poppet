@@ -663,6 +663,12 @@ CAMERA_PRESETS = {
     "three_quarter": (330.0, 65.0, 270.0),
     "front": (0.0, 15.0, 520.0),
     "back": (0.0, 40.0, -520.0),
+    # The ARPG demo's game camera: pitch -60 degrees, 2000 cm away, 60 degree horizontal
+    # field of view in Unreal. Cascadeur's viewport lens is narrower (about 28 degrees
+    # vertical against the game's 36), so the camera sits about 2600 cm away along the
+    # same 60 degree line to frame the body at the same size. Placed behind the
+    # character (-Z); pass camera_distance to change the range.
+    "game_topdown": (0.0, 2252.0, -1300.0),
 }
 
 
@@ -786,7 +792,7 @@ def render_frames(
 
     Camera: either an explicit ``camera_position``/``camera_target``, or a
     ``camera_preset`` (``side_left``, ``side_right``, ``three_quarter``, ``front``,
-    ``back``) placed relative to ``follow_point``. The camera stays fixed at the
+    ``back``, ``game_topdown``) placed relative to ``follow_point``. The camera stays fixed at the
     first frame's framing unless ``track_camera`` is set. Fixed framing is the
     honest review shot: the body travels through the frame and feet stay visible.
 
@@ -898,4 +904,4 @@ def render_frames(
 
 
 # Measurement and lint tools build on the helpers above.
-from poppet_mcp import motion_checks, rig_tools, take_tools  # noqa: E402,F401
+from poppet_mcp import motion_checks, rig_tools, roundtrip_tools, take_tools  # noqa: E402,F401

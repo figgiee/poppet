@@ -4,6 +4,25 @@ All notable changes to cascadeur-mcp — Cascadeur MCP. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `import_ue_clip`: imports an Unreal-exported clip upright onto a Cascadeur Unreal
+  rig (declares the file Y-up so Cascadeur does not turn it twice) and checks it
+  against an Unreal readback of the same clip.
+- `unbake_take`: runs Cascadeur's Animation Unbaking on a baked take, seeding keys on
+  fast-swing frames, and reports drift per joint.
+- `retime_keys`: moves key frames through a time warp, keeping each key's pose.
+- `export_ue_clip`: joints-only FBX export for Unreal.
+- `review_sheet` and the `game_topdown` camera preset.
+
+### Changed
+
+- `keys_report` returns a summary by default; `detail=True` gives the old output.
+- Autosave skips read-only scene files instead of leaving Cascadeur's temp copy
+  next to them.
+
 ## [1.1.1] — 2026-11-08
 
 ### Fixed
