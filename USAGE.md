@@ -113,6 +113,43 @@ Export is dialog-free binary FBX (baked animation, Y-up); `Cascy` yields ~2.9 MB
 Large scenes can exceed the per-call cap — if a call times out, check the file before
 retrying. Import semantics are less exercised than export; verify visually.
 
+## Unreal round trip
+
+Take an Unreal clip into Cascadeur, edit it, and send it back.
+
+```text
+import_ue_clip(fbx_path="C:/proj/Anim/fbx/Attack_01.fbx",
+               base_scene="C:/proj/Anim/casc/base/manny_weapon_base.casc",
+               save_as="C:/proj/Anim/casc/attack01_baked.casc",
+               readback_json="C:/proj/Anim/readback/Attack_01.json")
+save_scene(path="C:/proj/Anim/casc/attack01_edit.casc")   # work on a copy
+unbake_take(threshold_cm=2)                                # 81 keys a layer -> about 35 key poses
+retime_keys(anchors=[[0, 0], [7, 7], [18, 10], [80, 72]])  # move keys; poses are kept
+review_sheet(frame_start=0, frame_end=72, out_dir="C:/proj/Anim/review/edit")
+export_ue_clip(path="C:/proj/Anim/fbx/out/Attack_01_Edit.fbx")
+```
+
+- `import_ue_clip` imports a copy of the FBX declared Y-up. Unreal writes Z-up, and
+  Cascadeur's Unreal rigs already hold that turn in the `root` joint, so a plain
+  `import_fbx` turns the body twice and it lands on its back. With `readback_json`
+  (bone positions written by Unreal for the same clip) the reply compares pelvis and
+  foot heights at frame 0 and the worst difference per bone over the clip. Cascadeur
+  resamples the clip to the scene rate (30 fps).
+- `unbake_take` holds the take as fixed interpolation, then runs Cascadeur's
+  Animation Unbaking. It also keeps a key on each frame where a hand, foot or the
+  weapon bends away from its neighbours (`keep_fast`), because the unbaker never
+  adds keys inside spans of three frames or fewer. The reply reports drift per joint.
+- `retime_keys` moves key frames through a piecewise-linear warp and copies each
+  key's pose with it, then trims the clip to the last key. Two keys may not land on
+  one frame.
+- `review_sheet` renders the game's top-down camera (preset `game_topdown`: pitch
+  60 degrees, framed like the ARPG demo's 2000 cm, 60 degree camera) on the top row
+  and a side view below.
+- `export_ue_clip` exports joints only (no controllers, meshes or props).
+- `keys_report` now returns a summary; pass `detail=True` for every key.
+
+Autosave never writes over a read-only `.casc`. Keep base rig scenes read-only.
+
 ## Escape hatches
 
 ### `execute_csc_code` — typed runtime, arbitrary Python

@@ -92,6 +92,10 @@ for _i, _s in enumerate(_sm.scenes()):
     if not _p.lower().endswith('.casc'):
         os.makedirs(_dir, exist_ok=True)
         _p = os.path.join(_dir, time.strftime('untitled-%Y%m%d-%H%M%S') + '-' + str(_i) + '.casc')
+    elif os.path.exists(_p) and not os.access(_p, os.W_OK):
+        # A read-only base scene or a stock sample: never overwrite it, and never leave
+        # Cascadeur's half-written temp copy next to it.
+        continue
     _s.save(_p)
     _saved.append(_p)
 result = _saved
