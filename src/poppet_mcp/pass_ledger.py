@@ -96,12 +96,19 @@ def status(scene: str | None) -> dict[str, Any]:
     entry = _load().get(scene or "", {})
     edited = entry.get("edited", {}).get("at", 0.0)
     missing = {}
+    inputs = max(
+        edited,
+        entry.get("contacts", {}).get("at", 0.0),
+        entry.get("physics_inputs", {}).get("at", 0.0),
+    )
     for step, why in REQUIRED.items():
         rec = entry.get(step)
         if not rec:
             missing[step] = f"never run: {why}"
         elif rec["at"] < edited:
             missing[step] = f"older than the last edit: run {why} again"
+        elif step == "physics" and rec["at"] < inputs:
+            missing[step] = f"older than the latest contacts or physics settings: run {why} again"
         elif step == "audit" and rec["at"] < entry.get("physics", {}).get("at", 0.0):
             missing[step] = "older than the physics pass: run take_audit on the result"
         elif step == "audit" and not (rec.get("detail") or {}).get("passed"):

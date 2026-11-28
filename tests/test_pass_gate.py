@@ -88,3 +88,16 @@ def test_audit_must_be_newer_than_the_physics_pass():
     time.sleep(0.01)
     pass_ledger.mark("a.casc", "physics", {"complete": True})
     assert set(pass_ledger.status("a.casc")["missing"]) == {"audit"}
+
+
+def test_physics_settings_after_the_pass_require_physics_again_but_keep_contacts():
+    pass_ledger.mark("b.casc", "edited", "pose_keys_set")
+    time.sleep(0.01)
+    pass_ledger.mark("b.casc", "contacts", {})
+    time.sleep(0.01)
+    pass_ledger.mark("b.casc", "physics", {"complete": True})
+    time.sleep(0.01)
+    pass_ledger.mark("b.casc", "physics_inputs", {})
+    time.sleep(0.01)
+    pass_ledger.mark("b.casc", "audit", {"passed": True})
+    assert set(pass_ledger.status("b.casc")["missing"]) == {"physics"}

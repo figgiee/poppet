@@ -188,20 +188,36 @@ def take_audit(
 
     slides = {}
     for foot in FEET:
-        if foot in names:
-            s = planted_slides(
-                {f: samples[f][foot]["position"] for f in samples}, 3.0, 1.0, slide_tolerance_cm
+        ball = foot.replace("foot", "ball")
+        if foot not in names:
+            continue
+        s_foot = planted_slides(
+            {f: samples[f][foot]["position"] for f in samples}, 3.0, 1.0, slide_tolerance_cm
+        )
+        if ball in names:
+            # A heel lifting while the toe stays put moves the ankle but is not a skate:
+            # count a span only when the ball joint drifts in the same frames too.
+            s_ball = planted_slides(
+                {f: samples[f][ball]["position"] for f in samples}, 3.0, 1.0, slide_tolerance_cm
             )
-            if s:
-                slides[foot] = s
-                problems.append(
-                    {
-                        "kind": "foot_slide",
-                        "object": foot,
-                        "spans": s,
-                        "why": f"{foot} skates while planted; pin it with setup_contacts",
-                    }
+            s_foot = [
+                sp
+                for sp in s_foot
+                if any(
+                    b["span"][0] <= sp["span"][1] and sp["span"][0] <= b["span"][1] for b in s_ball
                 )
+            ]
+        if s_foot:
+            slides[foot] = s_foot
+            problems.append(
+                {
+                    "kind": "foot_slide",
+                    "object": foot,
+                    "spans": s_foot,
+                    "why": f"{foot} and its ball skate while planted; pin them with setup_contacts "
+                    "or run fulcrum_motion_cleaning",
+                }
+            )
 
     full_keys = pt._scall("keys_report")
     jumps = held_jumps(full_keys)

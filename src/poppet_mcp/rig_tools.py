@@ -193,7 +193,10 @@ def set_point_physics(
     }
     if frames is not None:
         params["frames"] = [int(f) for f in frames]
-    return pt._scall("behaviour_set", **params)
+    out = pt._scall("behaviour_set", _ledger_edit=False, **params)
+    # A physics input, not an animation edit: the physics pass must run again, contacts stay.
+    pass_ledger.mark(pt.scene_key(), "physics_inputs", {"object_names": params.get("object_names")})
+    return out
 
 
 def _span_frames(spans: list[list[int]]) -> list[int]:
@@ -229,6 +232,7 @@ def setup_contacts(
         off = [f for f in range(all_frames) if f not in set(on)]
         pt._scall(
             "behaviour_set",
+            _ledger_edit=False,
             object_names=[point],
             behaviour="AutoPhysicsApply",
             property="keep_global_translation",
@@ -238,6 +242,7 @@ def setup_contacts(
         if off:
             pt._scall(
                 "behaviour_set",
+                _ledger_edit=False,
                 object_names=[point],
                 behaviour="AutoPhysicsApply",
                 property="keep_global_translation",
@@ -247,6 +252,7 @@ def setup_contacts(
         if keep_rotation is not None:
             pt._scall(
                 "behaviour_set",
+                _ledger_edit=False,
                 object_names=[point],
                 behaviour="AutoPhysicsApply",
                 property="keep_global_rotation",
@@ -257,6 +263,7 @@ def setup_contacts(
             if val is not None:
                 pt._scall(
                     "behaviour_set",
+                    _ledger_edit=False,
                     object_names=[point],
                     behaviour="FulcrumPoint",
                     property=prop,
