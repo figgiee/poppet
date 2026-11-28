@@ -16,10 +16,18 @@ All notable changes to cascadeur-mcp — Cascadeur MCP. Follows
 - `retime_keys`: moves key frames through a time warp, keeping each key's pose.
 - `export_ue_clip`: joints-only FBX export for Unreal.
 - `review_sheet` and the `game_topdown` camera preset.
+- Pass gate: `take_audit` (floor penetration of feet, hands, head, pelvis and the blade;
+  skating planted feet; hold-then-jump STEP sections; unkeyed last frame) and
+  `pass_status`. `export_fbx` and `export_ue_clip` refuse until `setup_contacts`, a full
+  `physics_pass` and a passing `take_audit` have run after the last animation edit, unless
+  `skip_pass_reason` is given (the reply repeats it). The ledger is
+  `%LOCALAPPDATA%\poppet\pass-ledger.json`; `POPPET_LEDGER=off` turns it off.
 
 ### Changed
 
 - `keys_report` returns a summary by default; `detail=True` gives the old output.
+- `unbake_take` smooths the STEP sections the unbaker leaves between adjacent keys; a later
+  retime spread them into hold-then-snap jumps.
 - Autosave skips read-only scene files instead of leaving Cascadeur's temp copy
   next to them.
 

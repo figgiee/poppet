@@ -156,12 +156,15 @@ def test_physics_pass_answers_snap_dialog_and_reads_log(fake, monkeypatch, tmp_p
     log.write_text("old line\n")
     monkeypatch.setattr(pt, "CASCADEUR_LOG", log)
     original = fake.__call__
+    written = {
+        "AutoPhysicsTool.Snap to Auto Physics": "Command: Snap to autophysics\n",
+        "View.FixCollisions": "Collision cleaning completed from 0 to 4 frames\n",
+    }
 
     def cascadeur(command, **params):
         if command == "call_action":
             with log.open("a") as f:
-                f.write("AutoPhysics status: Iterations: 5, Termination: CONVERGENCE\n")
-                f.write("Autophysics core finished\n")
+                f.write(written.get(params["action_id"], ""))
         if command == "dialog_answer":
             fake.calls.append((command, params))
             return {"pressed": 1}
@@ -174,9 +177,34 @@ def test_physics_pass_answers_snap_dialog_and_reads_log(fake, monkeypatch, tmp_p
     monkeypatch.setattr(pt, "_call", cascadeur)
     result = pt.physics_pass(["pelvis_MainPoint"], 0, 4, apply_to="only_keys", timeout_sec=5)
     snap, clean = result["steps"]
-    assert snap["dialog_answered"] == "Only keys" and snap["solver_finished"] is True
-    assert clean["action"] == "FixCollisionsTool.Collision Penetration Cleaning"
+    assert snap["dialog_answered"] == "Only keys" and snap["ran"] is True
+    assert clean["action"] == "View.FixCollisions" and clean["ran"] is True
+    assert result["counts_as_physics_pass"] is True
     assert result["changed"] is False and result["open_dialogs"] == []
+
+
+def test_physics_pass_reports_an_action_cascadeur_does_not_know(fake, monkeypatch, tmp_path):
+    log = tmp_path / "cascadeur_log.log"
+    log.write_text("")
+    monkeypatch.setattr(pt, "CASCADEUR_LOG", log)
+    original = fake.__call__
+
+    def cascadeur(command, **params):
+        if command == "call_action":
+            with log.open("a") as f:
+                f.write("ERROR Action manager does not contain id: " + params["action_id"] + "\n")
+        if command == "dialog_answer":
+            return {"pressed": 1}
+        if command == "dialogs_list":
+            return {"dialogs": []}
+        if command == "keys_report":
+            return {"key_frames": [0, 4]}
+        return original(command, **params)
+
+    monkeypatch.setattr(pt, "_call", cascadeur)
+    result = pt.physics_pass(["pelvis_MainPoint"], 0, 4, timeout_sec=2)
+    assert result["counts_as_physics_pass"] is False
+    assert set(result["steps_not_run"]) == {"autophysics_snap", "collision_cleaning"}
 
 
 def test_physics_pass_rejects_unknown_step(fake):

@@ -14,9 +14,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from poppet_mcp import fbx_axis
+from poppet_mcp import fbx_axis, pass_ledger
 from poppet_mcp import pipeline_tools as pt
-from poppet_mcp.server import _call, mcp
+from poppet_mcp.server import _call, current_scene_name, mcp
 
 CHECK_JOINTS = [
     "pelvis",
@@ -36,13 +36,13 @@ MAX_SAMPLES = 2048
 JSON_MARK = "@@poppet-json@@"
 
 
-def _exec_json(code: str) -> Any:
+def _exec_json(code: str, edits: bool = True) -> Any:
     """Run in-app code that prints ``JSON_MARK`` + a JSON document; return the decoded value.
 
     The value goes through stdout rather than ``result`` because the runtime shortens
     long reprs.
     """
-    out = _call("exec_csc", code=code)
+    out = _call("exec_csc", code=code, _ledger_edit=edits)
     text = out.get("stdout", "") if isinstance(out, dict) else ""
     if JSON_MARK not in text:
         raise RuntimeError(f"in-app code printed no result: {out!r}")
@@ -234,6 +234,26 @@ try:
     ea.run(scene)
 finally:
     ea.get_parameters = _orig
+
+# The unbaker leaves STEP on sections between adjacent keys. Harmless while they stay one
+# frame apart, but any retime spreads them into hold-then-snap jumps, so smooth them now.
+STEP = csc.layers.layer.Interpolation.STEP
+SMOOTH = csc.layers.layer.Interpolation.CLAMPED_BEZIER
+smoothed = [0]
+
+def _smooth(model, update, scene_updater):
+    le = model.layers_editor()
+    for lid in ids:
+        layer = lv.layer(lid)
+        fr = [int(f) for f in layer.key_frame_indices()]
+        for f in fr[:-1]:
+            s = layer.sections[f]
+            if s.interval.interpolation == STEP:
+                s.interval.interpolation = SMOOTH
+                le.set_section(s, f, lid)
+                smoothed[0] += 1
+
+scene.modify_update('cascadeur-mcp: unbake smooth steps', _smooth)
 layers = []
 union = set()
 interp = {{}}
@@ -250,7 +270,7 @@ print({mark!r} + json.dumps({{
     'key_frames': sorted(union), 'keys_per_layer': layers, 'interpolation': interp,
     'parameters': {{'threshold_cm': params[0], 'fingers_threshold': params[1],
                     'ik_preference': params[2], 'clamp_preference': params[3]}},
-    'seconds': round(time.time() - t0, 1),
+    'seconds': round(time.time() - t0, 1), 'step_sections_smoothed': smoothed[0],
 }}))
 """
 
@@ -319,6 +339,11 @@ def unbake_take(
             if d > drift.get(n, {}).get("cm", -1):
                 drift[n] = {"cm": round(d, 3), "frame": f}
     report["seeded_fast_frames"] = seeded
+    report["next"] = (
+        "Unbaking is an edit, not a finished take: pin contacts (setup_contacts), run "
+        "physics_pass with autophysics_on, autophysics_snap and collision_cleaning, then "
+        "take_audit before export."
+    )
     report["drift"] = drift
     report["max_drift_cm"] = max((v["cm"] for v in drift.values()), default=0.0)
     return report
@@ -498,6 +523,10 @@ def retime_keys(anchors: list[list[int]]) -> dict:
     mapping = remap_frames(keys, anchors)
     report = _exec_json(_RETIME_CODE.format(mapping=mapping, mark=JSON_MARK))
     report["moved"] = {str(f): g for f, g in mapping.items() if f != g}
+    report["next"] = (
+        "Retiming changes momentum: re-pin contacts, run physics_pass and take_audit again "
+        "before export."
+    )
     report["key_frames_after"] = sorted(set(mapping.values()))
     return report
 
@@ -523,18 +552,27 @@ print({mark!r} + json.dumps({{'path': path, 'exists': os.path.exists(path),
 
 
 @mcp.tool()
-def export_ue_clip(path: str) -> dict:
+def export_ue_clip(path: str, skip_pass_reason: str | None = None) -> dict:
     """Export the visible tab's skeleton animation (joints only) to a binary FBX for Unreal.
 
     Joints only: no controllers, meshes or props (a sword stand-in stays out of the file),
     so Unreal can import it as an animation onto its own skeleton. Includes ``weapon_r``
     when the rig has it. Follow with the Unreal import script and a readback.
+
+    Refused until the full pass has run after the last edit (see ``pass_status``):
+    unbaking and retiming are edits, not a finished take. ``skip_pass_reason`` overrides
+    the check; the reply repeats it and you must tell the user what was skipped.
     """
     if not Path(path).is_absolute():
         raise ValueError("path must be absolute")
-    report = _exec_json(
-        _EXPORT_JOINTS_CODE.format(path=str(Path(path)).replace("\\", "/"), mark=JSON_MARK)
+    gate = pass_ledger.gate(
+        current_scene_name() if pass_ledger.enabled() else None, skip_pass_reason
     )
+    report = _exec_json(
+        _EXPORT_JOINTS_CODE.format(path=str(Path(path)).replace("\\", "/"), mark=JSON_MARK),
+        edits=False,
+    )
+    report.update(gate)
     target = Path(path)
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline and not (target.exists() and target.stat().st_size > 1000):
