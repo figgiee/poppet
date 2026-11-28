@@ -35,6 +35,7 @@ def pytest_configure(config):
     gitignored.
     """
     config.addinivalue_line("markers", "autosave: run with autosave on")
+    config.addinivalue_line("markers", "ledger: run with a private pass ledger")
     if not config.option.basetemp:
         base = os.path.join(REPO_ROOT, ".pytest-tmp")
         os.makedirs(base, exist_ok=True)
@@ -112,3 +113,14 @@ def _no_autosave(monkeypatch, request):
         monkeypatch.delenv("POPPET_AUTOSAVE", raising=False)
     else:
         monkeypatch.setenv("POPPET_AUTOSAVE", "0")
+
+
+@pytest.fixture(autouse=True)
+def _no_pass_ledger(monkeypatch, request):
+    """Keep tests off the real pass ledger. Tests marked ``ledger`` get a private file."""
+    if "ledger" in request.keywords:
+        monkeypatch.setenv(
+            "POPPET_LEDGER", str(request.getfixturevalue("tmp_path") / "ledger.json")
+        )
+    else:
+        monkeypatch.setenv("POPPET_LEDGER", "off")

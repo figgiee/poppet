@@ -23,7 +23,7 @@ from typing import Annotated, Any
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from poppet_mcp import __version__
+from poppet_mcp import __version__, pass_ledger
 from poppet_mcp.cascadeur_connection import CascadeurConnection
 from poppet_mcp.runtime import runtime_version
 
@@ -144,10 +144,23 @@ def _call(command: str, **params: Any) -> Any:
     scene (``POPPET_AUTOSAVE=0`` turns it off), so Cascadeur can be closed at any
     time without a save prompt.
     """
+    ledger_edit = params.pop("_ledger_edit", True)
     result = _connection().request(command, params)
     if command not in READ_ONLY_COMMANDS and autosave_enabled():
         _autosave()
+    if ledger_edit and pass_ledger.enabled() and command in pass_ledger.EDIT_COMMANDS:
+        try:
+            scene = params.get("scene_name") or current_scene_name()
+            pass_ledger.mark(scene, "edited", command)
+        except Exception as exc:  # pragma: no cover - the ledger must never fail a tool
+            print(f"poppet pass ledger failed: {exc}", file=sys.stderr)
     return result
+
+
+def current_scene_name() -> str | None:
+    """Name of the visible tab's scene, the key the pass ledger uses."""
+    info = _connection().request("scene_info", {})
+    return info.get("scene_name") if isinstance(info, dict) else None
 
 
 # ----------------------------------------------------------------------------
@@ -514,13 +527,36 @@ def import_fbx(path: str, target: str = "scene") -> dict:
 
 
 @mcp.tool()
-def export_fbx(path: str) -> dict:
+def export_fbx(path: str, skip_pass_reason: str | None = None) -> dict:
     """Export the current scene to a binary FBX (baked animation, Y-up).
 
+    Refused until the full pass has run after the last animation edit: setup_contacts,
+    physics_pass (AutoPhysics on and snapped, collision cleaning) and a passing
+    take_audit. ``pass_status`` shows what is missing. If a step truly does not apply
+    (a static prop, a pose library), give ``skip_pass_reason``; the reply repeats it and
+    you must tell the user what was skipped.
+
     Large scenes can exceed the script server's ~30s call cap. If the call times
-    out the export may still be in progress — check the file before retrying.
+    out the export may still be in progress: check the file before retrying.
     """
-    return _call("fbx_export", path=path)
+    gate = pass_ledger.gate(
+        current_scene_name() if pass_ledger.enabled() else None, skip_pass_reason
+    )
+    result = _call("fbx_export", path=path)
+    if isinstance(result, dict):
+        result.update(gate)
+    return result
+
+
+@mcp.tool()
+def pass_status() -> dict:
+    """Which steps of the full Cascadeur pass are missing for the visible scene.
+
+    Every take, and every edit of an existing or library clip, needs contacts
+    (setup_contacts), AutoPhysics with collision cleaning (physics_pass) and a passing
+    take_audit, each run after the last edit. The export tools refuse until then.
+    """
+    return pass_ledger.status(current_scene_name())
 
 
 # ----------------------------------------------------------------------------

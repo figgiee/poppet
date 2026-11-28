@@ -148,6 +148,11 @@ export_ue_clip(path="C:/proj/Anim/fbx/out/Attack_01_Edit.fbx")
 - `export_ue_clip` exports joints only (no controllers, meshes or props).
 - `keys_report` now returns a summary; pass `detail=True` for every key.
 
+Unbaking and retiming are edits, not a finished take. Before `export_ue_clip` (or
+`export_fbx`), run `setup_contacts`, `physics_pass` with `autophysics_on`,
+`autophysics_snap` and `collision_cleaning`, and `take_audit`; the exports refuse until all
+three ran after the last edit. `pass_status` lists what is missing.
+
 Autosave never writes over a read-only `.casc`. Keep base rig scenes read-only.
 
 ## Escape hatches

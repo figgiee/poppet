@@ -21,8 +21,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from poppet_mcp import pass_ledger
 from poppet_mcp.posing import Rig
-from poppet_mcp.server import _call, _connection, mcp
+from poppet_mcp.server import _call, _connection, current_scene_name, mcp
 
 DATA_DIR = Path(__file__).with_name("data")
 CASCADEUR_LOG = (
@@ -649,7 +650,37 @@ def physics_pass(
     )
     if open_dialogs:
         report["warning"] = "A Cascadeur dialog is still open and may be waiting for input."
+    unfinished = [e["step"] for e in report["steps"] if e.get("solver_finished") is False]
+    complete = (
+        "autophysics_snap" in steps
+        and "collision_cleaning" in steps
+        and not open_dialogs
+        and not unfinished
+    )
+    report["counts_as_physics_pass"] = complete
+    if not complete:
+        report["pass_note"] = (
+            "Not a full physics pass: it needs autophysics_snap (after autophysics_on) and "
+            "collision_cleaning, a finished solver and no open dialog."
+        )
+    pass_ledger.mark(
+        scene_key(),
+        "physics",
+        {
+            "complete": complete,
+            "steps": steps,
+            "apply_to": apply_to,
+            "frames": [frame_start, frame_end],
+        },
+    )
     return report
+
+
+def scene_key() -> str | None:
+    """The scene the pass ledger records against: the pinned scene, else the visible tab."""
+    if not pass_ledger.enabled():
+        return None
+    return _target_scene or current_scene_name()
 
 
 # ----------------------------------------------------------------------------
@@ -904,4 +935,10 @@ def render_frames(
 
 
 # Measurement and lint tools build on the helpers above.
-from poppet_mcp import motion_checks, rig_tools, roundtrip_tools, take_tools  # noqa: E402,F401
+from poppet_mcp import (  # noqa: E402,F401
+    motion_checks,
+    pass_tools,
+    rig_tools,
+    roundtrip_tools,
+    take_tools,
+)

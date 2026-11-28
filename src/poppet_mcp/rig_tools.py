@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from poppet_mcp import pass_ledger
 from poppet_mcp import pipeline_tools as pt
 from poppet_mcp.server import mcp
 
@@ -271,6 +272,7 @@ def setup_contacts(
         )["objects"][p]
         for p, s in contacts.items()
     }
+    pass_ledger.mark(pt.scene_key(), "contacts", {"points": sorted(contacts)})
     return report
 
 
