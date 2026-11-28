@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import Any
 
 # Commands that change a take's animation. exec_csc counts because it can do anything;
-# tools that run in-app code only to read or export pass ``_ledger_edit=False``.
+# tools that run in-app code only to read or export pass ``_ledger_edit=False``, and so does
+# physics_pass (it is the step being recorded; take_audit must then be newer than it).
 EDIT_COMMANDS = frozenset(
     {
         "autopose_run",
@@ -101,6 +102,8 @@ def status(scene: str | None) -> dict[str, Any]:
             missing[step] = f"never run: {why}"
         elif rec["at"] < edited:
             missing[step] = f"older than the last edit: run {why} again"
+        elif step == "audit" and rec["at"] < entry.get("physics", {}).get("at", 0.0):
+            missing[step] = "older than the physics pass: run take_audit on the result"
         elif step == "audit" and not (rec.get("detail") or {}).get("passed"):
             missing[step] = "the last take_audit found problems; fix them and run it again"
         elif step == "physics" and not (rec.get("detail") or {}).get("complete"):

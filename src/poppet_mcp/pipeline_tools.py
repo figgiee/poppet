@@ -490,7 +490,9 @@ def add_box_obstacle(
 PHYSICS_ACTIONS = {
     "autophysics_on": "AutoPhysicsTool.Switch Auto Physics",
     "autophysics_snap": "AutoPhysicsTool.Snap to Auto Physics",
-    "collision_cleaning": "FixCollisionsTool.Collision Penetration Cleaning",
+    # "FixCollisionsTool.Collision Penetration Cleaning" is in the install's strings but the
+    # action manager does not know it: it did nothing from 2026-11-10 to 2026-11-28.
+    "collision_cleaning": "View.FixCollisions",
     "autoposing": "AutoPosingTool.AutoPosing",
     "fulcrum_motion_cleaning": "View.FixFoot",
     "fulcrum_motion_cleaning_keep_keys": "View.FixFoot_KeepKeyFrames",
@@ -521,6 +523,13 @@ def _max_delta(a: dict[str, list], b: dict[str, list]) -> dict[str, float]:
 SNAP_DIALOG = "Apply AutoPhysics"
 SNAP_ANSWERS = {"all_frames": "All Frames", "only_keys": "Only keys"}
 SOLVER_DONE = "Autophysics core finished"
+UNKNOWN_ACTION = "Action manager does not contain id"
+# The log line each step writes when it actually ran (Cascadeur 2026.2.3).
+STEP_EVIDENCE = {
+    "autophysics_on": SOLVER_DONE,
+    "autophysics_snap": "Snap to autophysics",
+    "collision_cleaning": "Collision cleaning completed",
+}
 
 
 def _log_offset() -> int:
@@ -561,6 +570,19 @@ def _wait_solver(offset: int, timeout: float, quiet_sec: float = 1.5) -> dict:
             s for s in statuses if "CONVERGENCE" not in s and "USER_SUCCESS" not in s
         ],
     }
+
+
+def _wait_evidence(offset: int, marker: str | None, timeout: float) -> dict:
+    """Wait for ``marker`` in Cascadeur's log, or for the log to go quiet when there is none."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        lines = _log_since(offset)
+        if marker and any(marker in line for line in lines):
+            return {"evidence": next(line for line in lines if marker in line).strip()[-160:]}
+        if any(UNKNOWN_ACTION in line for line in lines):
+            return {"evidence": None}
+        time.sleep(0.25)
+    return {"evidence": None}
 
 
 @mcp.tool()
@@ -626,7 +648,7 @@ def physics_pass(
     report: dict[str, Any] = {"steps": []}
     for step in steps:
         offset = _log_offset()
-        _scall("call_action", action_id=PHYSICS_ACTIONS[step])
+        _scall("call_action", action_id=PHYSICS_ACTIONS[step], _ledger_edit=False)
         entry: dict[str, Any] = {"step": step, "action": PHYSICS_ACTIONS[step]}
         if step == "autophysics_snap":
             pressed = 0
@@ -637,7 +659,25 @@ def physics_pass(
                     "pressed"
                 ]
             entry["dialog_answered"] = SNAP_ANSWERS[apply_to] if pressed else None
-        entry.update(_wait_solver(offset, timeout_sec))
+        if step == "autophysics_on":
+            entry.update(_wait_solver(offset, timeout_sec))
+            if not entry["solver_finished"]:
+                # The action toggles: no solve means AutoPhysics was already on and is now
+                # off. Toggle back and wait again.
+                offset = _log_offset()
+                _scall("call_action", action_id=PHYSICS_ACTIONS[step], _ledger_edit=False)
+                entry.update(_wait_solver(offset, timeout_sec))
+                entry["toggled_twice"] = True
+        else:
+            entry.update(_wait_evidence(offset, STEP_EVIDENCE.get(step), min(timeout_sec, 20.0)))
+        lines = _log_since(offset)
+        if any(UNKNOWN_ACTION in line for line in lines):
+            entry["error"] = f"Cascadeur does not know the action {PHYSICS_ACTIONS[step]!r}"
+        expected = STEP_EVIDENCE.get(step)
+        if expected:
+            entry["ran"] = any(expected in line for line in lines) or bool(
+                entry.get("solver_finished") and step == "autophysics_on"
+            )
         report["steps"].append(entry)
     after = _sample(objects, frame_start, frame_end, frame_step)
     change = _max_delta(before, after)
@@ -650,18 +690,19 @@ def physics_pass(
     )
     if open_dialogs:
         report["warning"] = "A Cascadeur dialog is still open and may be waiting for input."
-    unfinished = [e["step"] for e in report["steps"] if e.get("solver_finished") is False]
+    not_run = [e["step"] for e in report["steps"] if e.get("ran") is False or e.get("error")]
+    report["steps_not_run"] = not_run
     complete = (
         "autophysics_snap" in steps
         and "collision_cleaning" in steps
         and not open_dialogs
-        and not unfinished
+        and not not_run
     )
     report["counts_as_physics_pass"] = complete
     if not complete:
         report["pass_note"] = (
             "Not a full physics pass: it needs autophysics_snap (after autophysics_on) and "
-            "collision_cleaning, a finished solver and no open dialog."
+            "collision_cleaning, each confirmed in Cascadeur's log, and no open dialog."
         )
     pass_ledger.mark(
         scene_key(),

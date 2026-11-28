@@ -187,7 +187,6 @@ def test_screenshot_viewport_forwards_path(stub_conn):
         ("call_action", "call_action", {"action_id": "Scene.Undo"}),
         ("run_autoposing", "autopose_run", {}),
         ("new_scene", "new_scene", {}),
-        ("load_scene", "load_scene", {"path": "C:/in.casc"}),
         ("get_object_hierarchy", "object_hierarchy", {}),
         ("list_object_attributes", "object_attributes_list", {"object_name": "pelvis_Box"}),
         ("set_layer_locked", "layer_locked_set", {"layer_id": "abc", "locked": True}),
@@ -283,3 +282,18 @@ def test_tool_surface_includes_new_tools():
     names = {tool.name for tool in asyncio.run(mcp.list_tools())}
     assert {"run_script", "get_script_server_status"} <= names
     assert len(names) >= 45
+
+
+def test_load_scene_opens_a_new_tab_when_the_file_is_not_open(stub_conn):
+    stub, srv = stub_conn
+    stub.request.side_effect = [{"repr": "{'switched': False}"}, {"loaded": True}]
+    srv.load_scene(path="C:/in.casc")
+    assert [c.args[0] for c in stub.request.call_args_list] == ["exec_csc", "load_scene"]
+
+
+def test_load_scene_switches_to_an_open_tab(stub_conn):
+    stub, srv = stub_conn
+    stub.request.return_value = {"repr": "{'switched': True}"}
+    out = srv.load_scene(path="C:/in.casc")
+    assert out["method"] == "switched to the open tab"
+    assert stub.request.call_count == 1

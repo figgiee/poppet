@@ -2366,9 +2366,16 @@ def _apply_interpolation(scene, le, frames, interp):
     def setsec(sec):
         sec.interval.interpolation = interp
 
+    skipped = []
     for f in frames:
         for lid in layer_ids:
+            # A layer without a key at f has no section to change there (fingers layers often
+            # carry fewer keys); change_section would raise "invalid map<K, T> key".
+            if int(f) not in {int(k) for k in lv.layer(lid).key_frame_indices()}:
+                skipped.append([int(f), _id_str(lid)])
+                continue
             le.change_section(int(f), lid, setsec)
+    return skipped
 
 
 def _d_interpolation_set(params, scene):
@@ -2378,15 +2385,18 @@ def _d_interpolation_set(params, scene):
         raise ValueError("frames must list the key frames whose following section to change")
     interp = _interpolation_enum(params.get("interpolation", "BEZIER"))
 
+    skipped = []
+
     def mod(model, update, updater):
         le = model.layers_editor()
-        _apply_interpolation(scene, le, frames, interp)
+        skipped.extend(_apply_interpolation(scene, le, frames, interp) or [])
         le.normalize_sections(scene)
 
     _checked_modify(scene, "cascadeur-mcp interpolation", mod, update=True)
     return {
         "frames": [int(f) for f in frames],
         "interpolation": str(params.get("interpolation", "BEZIER")).upper(),
+        "skipped_no_key": len(skipped),
     }
 
 

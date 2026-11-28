@@ -126,7 +126,8 @@ def take_audit(
     floor_tolerance_cm: float = 1.0,
     weapon_joint: str | None = "weapon_r",
     blade_axis: list[float] | None = None,
-    blade_length_cm: float = 170.0,
+    blade_length_cm: float = 176.0,
+    blade_half_width_cm: float = 15.0,
     slide_tolerance_cm: float = 2.0,
 ) -> dict:
     """Check the visible take for what reads as wrong in the game, and record the result.
@@ -136,7 +137,10 @@ def take_audit(
 
     - ``floor``: frames where a foot, hand, the head, the pelvis or the blade goes below
       the floor (blade checked at five points from grip to tip along ``blade_axis`` of
-      ``weapon_joint``; on the UE5 Manny base rig the blade runs along local -Y).
+      ``weapon_joint``; on the UE5 Manny base rig the blade runs along local -Y, which is
+      Unreal's +Y). The blade counts as touching when its centre line comes within
+      ``blade_half_width_cm`` of the floor (the Krojyn greatsword at scale 1.4 is about
+      30 cm wide). The floor is y = ``floor_height_cm``, the root plane in Unreal.
     - ``foot_slides``: planted spans (foot low and nearly still) where the foot skates
       more than ``slide_tolerance_cm``.
     - ``held_jumps``: STEP sections longer than a frame: the pose holds, then snaps.
@@ -168,7 +172,8 @@ def take_audit(
             if obj.get("rotation"):
                 pts = blade_points(obj["position"], obj["rotation"], axis, blade_length_cm)
                 lowest[f] = min(pt_[1] for pt_ in pts)
-        runs = floor_hits(lowest, floor_height_cm, floor_tolerance_cm)
+        # The blade has width: its edge reaches half the width below the centre line.
+        runs = floor_hits(lowest, floor_height_cm + blade_half_width_cm, floor_tolerance_cm)
         if runs:
             floor["blade"] = runs
     for p, runs in floor.items():

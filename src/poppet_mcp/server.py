@@ -591,9 +591,32 @@ def save_scene(path: str) -> dict:
 
 @mcp.tool()
 def load_scene(path: str) -> dict:
-    """Open a ``.casc`` file. Cascadeur opens it in a NEW tab; call ``close_spare_tabs``
-    when a step is finished so tabs do not pile up."""
+    """Open a ``.casc`` file in a new tab, or switch to its tab when it is already open.
+
+    Loading a file that is already open makes a second "<name> (1)" tab whose autosave
+    fails ("already opened in another tab"), so an open file is switched to instead.
+    Call ``close_spare_tabs`` when a step is finished so tabs do not pile up.
+    """
+    switched = _connection().request("exec_csc", {"code": _SWITCH_TAB_CODE.format(path=path)})
+    if isinstance(switched, dict) and "'switched': True" in str(switched.get("repr")):
+        return {"path": path, "loaded": True, "method": "switched to the open tab"}
     return _call("load_scene", path=path)
+
+
+_SWITCH_TAB_CODE = """
+import csc, os
+_sm = csc.app.get_application().get_scene_manager()
+_want = os.path.normcase(os.path.abspath({path!r}))
+_hit = None
+for _s in _sm.scenes():
+    _p = _s.get_path_name() or ''
+    if _p and os.path.normcase(os.path.abspath(_p)) == _want:
+        _hit = _s
+        break
+if _hit is not None:
+    _sm.set_current_scene(_hit)
+result = {{'switched': _hit is not None}}
+"""
 
 
 @mcp.tool()

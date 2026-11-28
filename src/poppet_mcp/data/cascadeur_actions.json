@@ -1,10 +1,10 @@
 {
- "source": "Strings extracted from the Cascadeur 2026.2.3 install (AppData\\Local\\Cascadeur) on 2026-11-11. An ID here is a candidate: call_action raises nothing for an unknown ID, so check the effect.",
+ "source": "Strings extracted from the Cascadeur 2026.2.3 install (AppData\\Local\\Cascadeur) on 2026-11-11. An ID here is a candidate: call_action raises nothing for an unknown ID, so check the effect. FixCollisionsTool.Collision Penetration Cleaning is NOT known to the action manager (2026-11-28); use View.FixCollisions.",
  "verified_live": [
   "AutoPhysicsTool.Switch Auto Physics",
   "AutoPhysicsTool.Snap to Auto Physics",
   "AutoPosingTool.AutoPosing",
-  "FixCollisionsTool.Collision Penetration Cleaning",
+  "View.FixCollisions",
   "Collision.Add kinematic mesh",
   "Scene.Undo",
   "Scene.Redo"

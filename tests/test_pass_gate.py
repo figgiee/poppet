@@ -80,3 +80,11 @@ def test_held_jumps_ignore_adjacent_steps():
         ]
     }
     assert held_jumps(full) == [{"layer": "Arm_R", "from": 1, "to": 5}]
+
+
+def test_audit_must_be_newer_than_the_physics_pass():
+    pass_ledger.mark("a.casc", "contacts", {})
+    pass_ledger.mark("a.casc", "audit", {"passed": True})
+    time.sleep(0.01)
+    pass_ledger.mark("a.casc", "physics", {"complete": True})
+    assert set(pass_ledger.status("a.casc")["missing"]) == {"audit"}
